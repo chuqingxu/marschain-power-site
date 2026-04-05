@@ -5,12 +5,66 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
 
 def format_generated_at(ts: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def load_analytics_config() -> dict[str, str]:
+    baidu_site_id = os.getenv("BAIDU_TONGJI_SITE_ID", "").strip()
+    clarity_project_id = (
+        os.getenv("MICROSOFT_CLARITY_PROJECT_ID", "").strip()
+        or os.getenv("CLARITY_PROJECT_ID", "").strip()
+    )
+    return {
+        "baidu_site_id": baidu_site_id,
+        "clarity_project_id": clarity_project_id,
+    }
+
+
+def build_analytics_head() -> str:
+    config = load_analytics_config()
+    scripts: list[str] = []
+
+    if config["baidu_site_id"]:
+        scripts.append(
+            """
+  <script>
+    window._hmt = window._hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?%s";
+      hm.defer = true;
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+"""
+            % config["baidu_site_id"]
+        )
+
+    if config["clarity_project_id"]:
+        scripts.append(
+            """
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r); t.async=1; t.src="https://www.clarity.ms/tag/" + i;
+      y=l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "%s");
+  </script>
+"""
+            % config["clarity_project_id"]
+        )
+
+    if not scripts:
+        return ""
+
+    return "".join(scripts)
 
 
 def build_html(payload: dict) -> str:
@@ -27,6 +81,7 @@ def build_html(payload: dict) -> str:
     )
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
     generated_at = format_generated_at(int(meta["generated_at"]))
+    analytics_head = build_analytics_head()
     warning_html = (
         ""
         if target_met
@@ -49,6 +104,7 @@ def build_html(payload: dict) -> str:
   <meta property="og:title" content="{title}">
   <meta property="og:description" content="{subtitle}">
   <meta property="og:type" content="website">
+{analytics_head}
   <style>
     :root {{
       --bg: #08111f;
@@ -339,6 +395,31 @@ def build_html(payload: dict) -> str:
       align-items: center;
       margin-bottom: 16px;
     }}
+    .action-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }}
+    .action-btn {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      transition: 0.2s ease;
+    }}
+    .action-btn:hover {{
+      transform: translateY(-1px);
+      border-color: rgba(77, 163, 255, 0.45);
+      background: rgba(77, 163, 255, 0.14);
+    }}
     .search {{
       flex: 1 1 360px;
       min-width: 260px;
@@ -455,6 +536,11 @@ def build_html(payload: dict) -> str:
             <span>区块扫描：{meta["block_pages"]} 页</span>
             <span>上级递归深度：{meta["upline_depth"]}</span>
           </div>
+          <div class="action-row">
+            <a class="action-btn" href="./downloads/latest.csv" download data-track="download_csv" data-label="latest.csv">下载 CSV</a>
+            <a class="action-btn" href="./downloads/latest.xlsx" download data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
+            <a class="action-btn" href="./data/latest.json" target="_blank" rel="noopener" data-track="open_json" data-label="latest.json">查看 JSON</a>
+          </div>
         </div>
         <div class="coverage">
           <div class="coverage-ring" id="coverageRing">
@@ -529,6 +615,29 @@ def build_html(payload: dict) -> str:
 
   <script id="rankData" type="application/json">{embedded}</script>
   <script>
+    const analytics = {{
+      track(eventName, detail = {{}}) {{
+        try {{
+          if (window._hmt && typeof window._hmt.push === 'function') {{
+            const label = detail.label ? String(detail.label) : '';
+            window._hmt.push(['_trackEvent', 'marschain_site', eventName, label]);
+          }}
+        }} catch (error) {{
+          console.warn('Baidu analytics track failed:', error);
+        }}
+        try {{
+          if (typeof window.clarity === 'function') {{
+            window.clarity('event', eventName);
+            if (detail.label) {{
+              window.clarity('set', 'last_event_label', String(detail.label).slice(0, 120));
+            }}
+          }}
+        }} catch (error) {{
+          console.warn('Clarity analytics track failed:', error);
+        }}
+      }}
+    }};
+
     const payload = JSON.parse(document.getElementById('rankData').textContent);
     const meta = payload.meta;
     const coverageTarget = Number(meta.coverage_target || 0.8);
@@ -555,6 +664,8 @@ def build_html(payload: dict) -> str:
       sortKey: 'power',
       sortDir: 'desc'
     }};
+    let searchTrackTimer = null;
+    let lastTrackedQuery = '';
 
     const formatUnits = (raw) => {{
       if (raw >= 1e12) return (raw / 1e12).toFixed(2) + 'T';
@@ -639,6 +750,7 @@ def build_html(payload: dict) -> str:
       row.querySelectorAll('[data-filter]').forEach((button) => {{
         button.addEventListener('click', () => {{
           state.filter = button.dataset.filter;
+          analytics.track('filter_change', {{ label: state.filter }});
           renderTable();
           renderChips();
         }});
@@ -691,8 +803,23 @@ def build_html(payload: dict) -> str:
     }}
 
     function bindEvents() {{
+      document.querySelectorAll('[data-track]').forEach((node) => {{
+        node.addEventListener('click', () => {{
+          analytics.track(node.dataset.track || 'click', {{ label: node.dataset.label || '' }});
+        }});
+      }});
       document.getElementById('searchInput').addEventListener('input', (event) => {{
         state.query = event.target.value;
+        if (searchTrackTimer) {{
+          clearTimeout(searchTrackTimer);
+        }}
+        searchTrackTimer = setTimeout(() => {{
+          const normalized = state.query.trim().toLowerCase();
+          if (normalized.length >= 2 && normalized !== lastTrackedQuery) {{
+            lastTrackedQuery = normalized;
+            analytics.track('search_used', {{ label: normalized.slice(0, 60) }});
+          }}
+        }}, 600);
         renderTable();
       }});
       document.querySelectorAll('th[data-key]').forEach((cell) => {{
@@ -704,6 +831,7 @@ def build_html(payload: dict) -> str:
             state.sortKey = key;
             state.sortDir = key === 'address' || key.startsWith('upline') ? 'asc' : 'desc';
           }}
+          analytics.track('table_sort', {{ label: `${{state.sortKey}}:${{state.sortDir}}` }});
           renderTable();
         }});
       }});

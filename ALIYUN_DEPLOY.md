@@ -41,6 +41,8 @@
 - `ALIYUN_OSS_ENDPOINT`
 - `ALIYUN_OSS_PREFIX`
 - `ALIYUN_SITE_BASE_URL`
+- `BAIDU_TONGJI_SITE_ID`
+- `MICROSOFT_CLARITY_PROJECT_ID`
 
 说明：
 
@@ -49,6 +51,14 @@
 - `ALIYUN_OSS_PREFIX`：如果你要把站点放在 Bucket 根目录，留空即可
 - `ALIYUN_SITE_BASE_URL`：例如 `https://mars.example.com`
   - 如果 CDN 和独立域名还没准备好，可以暂时留空
+- `BAIDU_TONGJI_SITE_ID`：百度统计站点 ID，可选
+- `MICROSOFT_CLARITY_PROJECT_ID`：Clarity 项目 ID，可选
+
+统计说明：
+
+- 这两个值都应该放在 GitHub Secrets，不要写死在仓库里
+- 构建时只注入官方统计脚本，不会把统计报表写进 OSS
+- 浏览量、点击量、热力图只在你自己的后台账号里查看，访客无法直接读取
 
 ## 4. GitHub Actions 行为
 
@@ -82,6 +92,7 @@ python3 deploy_to_oss.py \
   --endpoint oss-cn-hangzhou.aliyuncs.com \
   --allow-bucket-root \
   --dry-run
+```
 
 如果要同时演练 CDN 刷新：
 
@@ -93,7 +104,6 @@ python3 deploy_to_oss.py \
   --base-url https://mars.example.com \
   --allow-bucket-root \
   --dry-run
-```
 ```
 
 ## 6. 风险提醒

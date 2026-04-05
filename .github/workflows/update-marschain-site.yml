@@ -23,6 +23,8 @@ jobs:
       ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
       ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
       ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+      BAIDU_TONGJI_SITE_ID: ${{ secrets.BAIDU_TONGJI_SITE_ID }}
+      MICROSOFT_CLARITY_PROJECT_ID: ${{ secrets.MICROSOFT_CLARITY_PROJECT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

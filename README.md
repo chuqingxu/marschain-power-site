@@ -50,6 +50,26 @@ python3 -m http.server 8000
 4. 刷新 CDN 首页、JSON 和下载文件缓存
 5. 通过独立域名对外访问
 
+## 访问统计
+
+站点已经预留了两套统计接入位，默认不公开任何统计结果：
+
+- `BAIDU_TONGJI_SITE_ID`：百度统计站点 ID
+- `MICROSOFT_CLARITY_PROJECT_ID`：Microsoft Clarity 项目 ID
+
+只要把这两个值配置进 GitHub Secrets，构建时就会自动注入官方统计脚本。
+
+当前已埋点的前端行为：
+
+- 下载 `CSV`
+- 下载 `Excel`
+- 打开 `JSON`
+- 搜索榜单
+- 切换筛选条件
+- 点击表头排序
+
+统计结果只会进入你自己的百度统计 / Clarity 后台，不会写进公开站点文件，也不会暴露给访客。
+
 ## 说明
 
 - 网站内容基于公开 explorer API 深度扫描生成，属于 `best effort` 榜单，不是官方后端直接导出的全量榜。
