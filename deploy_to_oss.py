@@ -192,9 +192,13 @@ def main() -> int:
 
     sync_summary = sync_site(site_dir, bucket_name, endpoint, prefix, args.dry_run)
     refreshed = []
+    cdn_refresh_error = ""
     cdn_refresh_skipped = args.skip_cdn_refresh or not base_url
     if not cdn_refresh_skipped:
-        refreshed = refresh_cdn(base_url, args.dry_run)
+        try:
+            refreshed = refresh_cdn(base_url, args.dry_run)
+        except Exception as exc:  # pragma: no cover - depends on Alibaba Cloud account state
+            cdn_refresh_error = str(exc)
 
     print(
         json.dumps(
@@ -205,6 +209,7 @@ def main() -> int:
                 "uploaded_count": len(sync_summary["upload"]),
                 "deleted_count": len(sync_summary["delete"]),
                 "cdn_refresh_skipped": cdn_refresh_skipped,
+                "cdn_refresh_error": cdn_refresh_error,
                 "refreshed_urls": refreshed,
                 "dry_run": args.dry_run,
             },
