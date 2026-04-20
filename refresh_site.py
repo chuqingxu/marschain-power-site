@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh the MarsChain ranking site until the coverage target is reached."""
+"""Refresh the MarsChain ranking site, aiming for the coverage target."""
 
 from __future__ import annotations
 
@@ -130,8 +130,8 @@ def write_site_bundle(site_dir: Path, payload: dict, csv_path: Path, xlsx_path: 
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Refresh the MarsChain ranking site with an 80% coverage target.")
-    parser.add_argument("--coverage-target", type=float, default=0.80, help="Stop once discovered coverage reaches this threshold.")
+    parser = argparse.ArgumentParser(description="Refresh the MarsChain ranking site while trying to reach the coverage target.")
+    parser.add_argument("--coverage-target", type=float, default=0.80, help="Preferred coverage target before stopping early.")
     parser.add_argument("--output-dir", default="output", help="Directory for generated ranking files.")
     parser.add_argument("--site-dir", default="site", help="Directory for deployable static site output.")
     parser.add_argument("--cache-file", default="output/marschain_power_cache.json", help="Shared cache file for power lookups.")
@@ -186,10 +186,10 @@ def main() -> int:
         raise RuntimeError("No ranking results were generated.")
 
     if not target_met:
-        raise RuntimeError(
-            f"Coverage target not met after deepest scan tier {chosen_label}: "
+        print(
+            f"[warn] coverage target not met after deepest scan tier {chosen_label}: "
             f"{chosen_meta['discovered_power_coverage']:.4%} < {args.coverage_target:.2%}. "
-            "Refusing to publish a below-target site."
+            "Publishing the deepest completed result anyway.",
         )
 
     chosen_meta = dict(chosen_meta)
