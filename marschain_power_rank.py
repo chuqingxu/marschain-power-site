@@ -26,10 +26,16 @@ from typing import Any
 
 
 BASE_URL = "https://explorer.marschain.net/api"
+DEFAULT_RPC_URL = "https://rpcs.marschain.net"
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json, text/plain, */*",
     "Referer": "https://explorer.marschain.net/",
+}
+RPC_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    "Content-Type": "application/json",
 }
 
 
@@ -98,6 +104,38 @@ def request_json(path: str, params: dict[str, Any] | None = None, retries: int =
     raise RuntimeError(f"Request failed for {url}")
 
 
+def rpc_json(rpc_url: str, payload: dict[str, Any] | list[dict[str, Any]], retries: int = 3) -> Any:
+    data = json.dumps(payload).encode("utf-8")
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        req = urllib.request.Request(rpc_url, data=data, headers=RPC_HEADERS, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                parsed = json.loads(resp.read().decode("utf-8"))
+            if isinstance(parsed, dict) and parsed.get("error"):
+                raise RuntimeError(f"RPC error for {parsed.get('id')}: {parsed['error']}")
+            return parsed
+        except Exception as exc:  # pragma: no cover - public RPC variability
+            last_error = exc
+            if attempt < retries:
+                time.sleep(0.8 * attempt)
+                continue
+            raise
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"RPC request failed for {rpc_url}")
+
+
+def rpc_call(rpc_url: str, method: str, params: list[Any] | None = None) -> Any:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or []}
+    parsed = rpc_json(rpc_url, payload)
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"Unexpected RPC response for {method}: {type(parsed).__name__}")
+    if parsed.get("error"):
+        raise RuntimeError(f"RPC error for {method}: {parsed['error']}")
+    return parsed.get("result")
+
+
 def normalize_address(value: str | None) -> str | None:
     if not value or not isinstance(value, str):
         return None
@@ -117,6 +155,19 @@ def is_probably_user_address(value: str | None) -> bool:
     if lower.startswith("0x0000000000000000000000000000000000001"):
         return False
     return True
+
+
+def hex_to_int(value: str | int | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value, 16) if value.startswith("0x") else int(value)
+        except ValueError:
+            return None
+    return None
 
 
 def format_units(raw: int) -> str:
@@ -210,6 +261,123 @@ def collect_candidates(
                     print(f"[info] block-page scan: {idx}/{block_pages}", file=sys.stderr)
 
     return tx_counter, miner_counter
+
+
+def collect_rpc_block_candidates(
+    rpc_url: str,
+    rpc_blocks: int,
+    rpc_start_block: int | None,
+    rpc_batch_size: int,
+    rpc_workers: int,
+    include_to: bool,
+    progress: bool,
+) -> tuple[Counter[str], Counter[str], dict[str, Any]]:
+    tx_counter: Counter[str] = Counter()
+    miner_counter: Counter[str] = Counter()
+    meta: dict[str, Any] = {
+        "rpc_url": rpc_url,
+        "rpc_blocks_requested": rpc_blocks,
+        "rpc_blocks_scanned": 0,
+        "rpc_transactions_seen": 0,
+        "rpc_error_count": 0,
+    }
+    if not rpc_url or rpc_blocks <= 0:
+        return tx_counter, miner_counter, meta
+
+    try:
+        latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
+    except Exception as exc:
+        meta["rpc_error"] = str(exc)
+        print(f"[warn] rpc latest block lookup failed: {exc}", file=sys.stderr)
+        return tx_counter, miner_counter, meta
+
+    if latest_block is None:
+        meta["rpc_error"] = "eth_blockNumber returned an invalid value"
+        return tx_counter, miner_counter, meta
+
+    high_block = latest_block if rpc_start_block is None else min(rpc_start_block, latest_block)
+    low_block = max(0, high_block - rpc_blocks + 1)
+    batch_size = max(1, min(rpc_batch_size, 200))
+    meta.update(
+        {
+            "rpc_latest_block": latest_block,
+            "rpc_start_block": high_block,
+            "rpc_end_block": low_block,
+            "rpc_batch_size": batch_size,
+            "rpc_workers": rpc_workers,
+        }
+    )
+
+    batches: list[list[int]] = []
+    current = high_block
+    while current >= low_block:
+        end = max(low_block, current - batch_size + 1)
+        batches.append(list(range(current, end - 1, -1)))
+        current = end - 1
+
+    def fetch_batch(numbers: list[int]) -> tuple[Counter[str], Counter[str], int, int]:
+        payload = [
+            {
+                "jsonrpc": "2.0",
+                "id": number,
+                "method": "eth_getBlockByNumber",
+                "params": [hex(number), True],
+            }
+            for number in numbers
+        ]
+        parsed = rpc_json(rpc_url, payload)
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Unexpected RPC batch response: {type(parsed).__name__}")
+
+        local_tx_counter: Counter[str] = Counter()
+        local_miner_counter: Counter[str] = Counter()
+        scanned = 0
+        tx_seen = 0
+        for item in parsed:
+            if not isinstance(item, dict) or item.get("error"):
+                continue
+            block = item.get("result")
+            if not isinstance(block, dict):
+                continue
+            scanned += 1
+            miner = normalize_address(block.get("miner") or block.get("author"))
+            if is_probably_user_address(miner):
+                local_miner_counter[miner] += 1
+            for tx in block.get("transactions", []):
+                if not isinstance(tx, dict):
+                    continue
+                tx_seen += 1
+                sender = normalize_address(tx.get("from"))
+                if is_probably_user_address(sender):
+                    local_tx_counter[sender] += 1
+                if include_to:
+                    receiver = normalize_address(tx.get("to"))
+                    if is_probably_user_address(receiver):
+                        local_tx_counter[receiver] += 1
+        return local_tx_counter, local_miner_counter, scanned, tx_seen
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_workers, 12))) as pool:
+        future_map = {pool.submit(fetch_batch, batch): batch for batch in batches}
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            try:
+                batch_tx, batch_miner, scanned, tx_seen = future.result()
+            except Exception as exc:
+                meta["rpc_error_count"] += 1
+                if meta["rpc_error_count"] <= 10:
+                    print(f"[warn] rpc block batch failed: {exc}", file=sys.stderr)
+                continue
+            tx_counter.update(batch_tx)
+            miner_counter.update(batch_miner)
+            meta["rpc_blocks_scanned"] += scanned
+            meta["rpc_transactions_seen"] += tx_seen
+            if progress and idx % 50 == 0:
+                print(
+                    f"[info] rpc block scan: {idx}/{len(batches)} batches, "
+                    f"{meta['rpc_blocks_scanned']}/{rpc_blocks} blocks",
+                    file=sys.stderr,
+                )
+
+    return tx_counter, miner_counter, meta
 
 
 def build_row_from_payload(
@@ -680,6 +848,20 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         workers=args.workers,
         progress=args.progress,
     )
+    rpc_meta: dict[str, Any] = {}
+    rpc_blocks = getattr(args, "rpc_blocks", 0)
+    if rpc_blocks:
+        rpc_tx_counter, rpc_miner_counter, rpc_meta = collect_rpc_block_candidates(
+            rpc_url=getattr(args, "rpc_url", DEFAULT_RPC_URL),
+            rpc_blocks=rpc_blocks,
+            rpc_start_block=getattr(args, "rpc_start_block", None),
+            rpc_batch_size=getattr(args, "rpc_batch_size", 100),
+            rpc_workers=getattr(args, "rpc_workers", min(args.workers, 8)),
+            include_to=args.include_to,
+            progress=args.progress,
+        )
+        tx_counter.update(rpc_tx_counter)
+        miner_counter.update(rpc_miner_counter)
 
     candidates = set(tx_counter) | set(miner_counter)
     ordered_candidates = sorted(
@@ -816,6 +998,15 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "tx_limit": args.tx_limit,
         "block_pages": args.block_pages,
         "block_limit": args.block_limit,
+        "rpc_enabled": bool(rpc_blocks),
+        "rpc_url": rpc_meta.get("rpc_url") if rpc_meta else None,
+        "rpc_blocks_requested": rpc_meta.get("rpc_blocks_requested", 0),
+        "rpc_blocks_scanned": rpc_meta.get("rpc_blocks_scanned", 0),
+        "rpc_transactions_seen": rpc_meta.get("rpc_transactions_seen", 0),
+        "rpc_start_block": rpc_meta.get("rpc_start_block"),
+        "rpc_end_block": rpc_meta.get("rpc_end_block"),
+        "rpc_latest_block": rpc_meta.get("rpc_latest_block"),
+        "rpc_error_count": rpc_meta.get("rpc_error_count", 0),
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
         "upline_limit": args.upline_limit,
@@ -841,6 +1032,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tx-limit", type=int, default=100, help="Transactions per page.")
     parser.add_argument("--block-pages", type=int, default=20, help="Recent block pages to scan.")
     parser.add_argument("--block-limit", type=int, default=100, help="Blocks per page.")
+    parser.add_argument("--rpc-url", default=DEFAULT_RPC_URL, help="Optional JSON-RPC endpoint for extra block/tx candidate scanning.")
+    parser.add_argument("--rpc-blocks", type=int, default=0, help="Extra recent blocks to scan through JSON-RPC.")
+    parser.add_argument("--rpc-start-block", type=int, default=None, help="Highest block number for JSON-RPC scanning; defaults to latest.")
+    parser.add_argument("--rpc-batch-size", type=int, default=100, help="Blocks per JSON-RPC batch request.")
+    parser.add_argument("--rpc-workers", type=int, default=6, help="Concurrent JSON-RPC batch workers.")
     parser.add_argument("--max-candidates", type=int, default=3000, help="Maximum candidate addresses to power-check.")
     parser.add_argument("--top", type=int, default=100, help="Number of ranked rows to output.")
     parser.add_argument("--workers", type=int, default=16, help="Concurrent power lookups.")

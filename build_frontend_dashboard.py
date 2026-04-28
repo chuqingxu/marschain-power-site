@@ -74,10 +74,11 @@ def build_html(payload: dict) -> str:
     coverage_target = float(meta.get("coverage_target", 0.80))
     target_met = bool(meta.get("target_met", meta.get("discovered_power_coverage", 0) >= coverage_target))
     threshold_label = f"{coverage_target * 100:.0f}%"
+    rpc_blocks_scanned = int(meta.get("rpc_blocks_scanned", 0) or 0)
     subtitle = (
-        f"基于公开 explorer API 的深度扫描结果，当前覆盖率已达到 {threshold_label} 发布阈值。"
+        f"基于公开 explorer API 与官方 RPC 的深度扫描结果，当前覆盖率已达到 {threshold_label} 发布阈值。"
         if target_met
-        else f"基于公开 explorer API 的深度扫描结果，本轮覆盖率暂未达到 {threshold_label} 发布阈值。"
+        else f"基于公开 explorer API 与官方 RPC 的深度扫描结果，本轮覆盖率暂未达到 {threshold_label} 发布阈值。"
     )
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
     generated_at = format_generated_at(int(meta["generated_at"]))
@@ -534,6 +535,7 @@ def build_html(payload: dict) -> str:
             <span>生成时间：{generated_at}</span>
             <span>交易扫描：{meta["tx_pages"]} 页</span>
             <span>区块扫描：{meta["block_pages"]} 页</span>
+            <span>RPC 深扫：{rpc_blocks_scanned:,} 块</span>
             <span>上级递归深度：{meta["upline_depth"]}</span>
           </div>
           <div class="action-row">
@@ -692,7 +694,8 @@ def build_html(payload: dict) -> str:
         ['候选地址', meta.candidate_count.toLocaleString()],
         ['前 100 名总算力', formatUnits(rows.slice(0, 100).reduce((sum, row) => sum + row.power_num, 0))],
         ['交易扫描页', meta.tx_pages.toLocaleString()],
-        ['区块扫描页', meta.block_pages.toLocaleString()]
+        ['区块扫描页', meta.block_pages.toLocaleString()],
+        ['RPC 深扫区块', Number(meta.rpc_blocks_scanned || 0).toLocaleString()]
       ];
       document.getElementById('statGrid').innerHTML = cards.map(([label, value]) => `
         <div class="stat-card">
