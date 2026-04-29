@@ -27,6 +27,7 @@ from typing import Any
 
 BASE_URL = "https://explorer.marschain.net/api"
 DEFAULT_RPC_URL = "https://rpcs.marschain.net"
+POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json, text/plain, */*",
@@ -47,6 +48,7 @@ class RankedAddress:
     burned_amount: int
     tx_seen: int
     miner_seen: int
+    log_seen: int
     upline_seen: int
     source_score: int
     upline1: str | None
@@ -64,6 +66,7 @@ class RankedAddress:
             "burned_amount_display": format_token(self.burned_amount),
             "tx_seen": self.tx_seen,
             "miner_seen": self.miner_seen,
+            "log_seen": self.log_seen,
             "upline_seen": self.upline_seen,
             "source_score": self.source_score,
             "upline1": self.upline1,
@@ -152,9 +155,20 @@ def is_probably_user_address(value: str | None) -> bool:
     lower = address.lower()
     if lower == "0x0000000000000000000000000000000000000000":
         return False
-    if lower.startswith("0x0000000000000000000000000000000000001"):
+    # Low numeric values can appear in event topics as uint256 token IDs.
+    # Real externally-owned accounts in this range are vanishingly unlikely.
+    if lower.startswith("0x000000000000000000000000"):
         return False
     return True
+
+
+def topic_to_probable_address(topic: str | None) -> str | None:
+    if not isinstance(topic, str) or not topic.startswith("0x") or len(topic) != 66:
+        return None
+    # Solidity encodes indexed address topics as 12 zero bytes + 20-byte address.
+    if topic[2:26] != "0" * 24:
+        return None
+    return normalize_address("0x" + topic[-40:])
 
 
 def hex_to_int(value: str | int | None) -> int | None:
@@ -385,11 +399,118 @@ def collect_rpc_block_candidates(
     return tx_counter, miner_counter, meta
 
 
+def collect_rpc_log_candidates(
+    rpc_url: str,
+    rpc_log_blocks: int,
+    rpc_log_start_block: int | None,
+    rpc_log_chunk_size: int,
+    rpc_log_workers: int,
+    progress: bool,
+) -> tuple[Counter[str], dict[str, Any]]:
+    log_counter: Counter[str] = Counter()
+    meta: dict[str, Any] = {
+        "rpc_log_url": rpc_url,
+        "rpc_log_contract": POWER_CONTRACT_ADDRESS,
+        "rpc_log_blocks_requested": rpc_log_blocks,
+        "rpc_log_blocks_scanned": 0,
+        "rpc_logs_seen": 0,
+        "rpc_log_error_count": 0,
+    }
+    if not rpc_url or rpc_log_blocks <= 0:
+        return log_counter, meta
+
+    try:
+        latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
+    except Exception as exc:
+        meta["rpc_log_error"] = str(exc)
+        print(f"[warn] rpc log latest block lookup failed: {exc}", file=sys.stderr)
+        return log_counter, meta
+
+    if latest_block is None:
+        meta["rpc_log_error"] = "eth_blockNumber returned an invalid value"
+        return log_counter, meta
+
+    high_block = latest_block if rpc_log_start_block is None else min(rpc_log_start_block, latest_block)
+    low_block = max(0, high_block - rpc_log_blocks + 1)
+    chunk_size = max(1, min(rpc_log_chunk_size, 100_000))
+    meta.update(
+        {
+            "rpc_log_latest_block": latest_block,
+            "rpc_log_start_block": high_block,
+            "rpc_log_end_block": low_block,
+            "rpc_log_chunk_size": chunk_size,
+            "rpc_log_workers": rpc_log_workers,
+        }
+    )
+
+    ranges: list[tuple[int, int]] = []
+    current = high_block
+    while current >= low_block:
+        start = max(low_block, current - chunk_size + 1)
+        ranges.append((start, current))
+        current = start - 1
+
+    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], int, int]:
+        start, end = block_range
+        parsed = rpc_call(
+            rpc_url,
+            "eth_getLogs",
+            [
+                {
+                    "fromBlock": hex(start),
+                    "toBlock": hex(end),
+                    "address": POWER_CONTRACT_ADDRESS,
+                }
+            ],
+        )
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Unexpected eth_getLogs response: {type(parsed).__name__}")
+
+        local_counter: Counter[str] = Counter()
+        for log in parsed:
+            if not isinstance(log, dict):
+                continue
+            topics = log.get("topics")
+            if not isinstance(topics, list):
+                continue
+            for topic in topics[1:]:
+                address = topic_to_probable_address(topic)
+                if is_probably_user_address(address):
+                    local_counter[address] += 1
+        return local_counter, end - start + 1, len(parsed)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_log_workers, 6))) as pool:
+        future_map = {pool.submit(fetch_range, block_range): block_range for block_range in ranges}
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            block_range = future_map[future]
+            try:
+                batch_counter, blocks_scanned, logs_seen = future.result()
+            except Exception as exc:
+                meta["rpc_log_error_count"] += 1
+                if meta["rpc_log_error_count"] <= 10:
+                    print(f"[warn] rpc log range {block_range[0]}-{block_range[1]} failed: {exc}", file=sys.stderr)
+                continue
+            log_counter.update(batch_counter)
+            meta["rpc_log_blocks_scanned"] += blocks_scanned
+            meta["rpc_logs_seen"] += logs_seen
+            if progress and idx % 5 == 0:
+                print(
+                    f"[info] rpc log scan: {idx}/{len(ranges)} ranges, "
+                    f"{meta['rpc_log_blocks_scanned']}/{rpc_log_blocks} blocks, "
+                    f"{meta['rpc_logs_seen']} logs",
+                    file=sys.stderr,
+                )
+
+    meta["rpc_log_addresses_seen"] = len(log_counter)
+    return log_counter, meta
+
+
 def build_row_from_payload(
     address: str,
     payload: dict[str, Any],
     tx_seen: int = 0,
     miner_seen: int = 0,
+    log_seen: int = 0,
     upline_seen: int = 0,
 ) -> RankedAddress | None:
     power = int(payload.get("power", "0") or 0)
@@ -404,8 +525,9 @@ def build_row_from_payload(
         burned_amount=burned_amount,
         tx_seen=tx_seen,
         miner_seen=miner_seen,
+        log_seen=log_seen,
         upline_seen=upline_seen,
-        source_score=tx_seen * 10 + miner_seen * 20 + upline_seen * 5,
+        source_score=tx_seen * 10 + miner_seen * 20 + log_seen * 15 + upline_seen * 5,
         upline1=normalize_address(payload.get("upline1")),
         upline2=normalize_address(payload.get("upline2")),
     )
@@ -482,6 +604,7 @@ def write_html(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
         ("榜单行数", f"{meta['ranked_count']:,}"),
         ("全网总算力", format_units(meta["network_total_power"])),
         ("已发现覆盖", format_percent(meta["discovered_power_coverage"])),
+        ("合约日志", f"{meta.get('rpc_logs_seen', 0):,}"),
     ]
     summary_html = "\n".join(
         f'<div class="card"><div class="label">{label}</div><div class="value">{value}</div></div>'
@@ -496,6 +619,7 @@ def write_html(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
             f"<td data-sort='{row.total_burned_amount}'>{format_token(row.total_burned_amount)}</td>"
             f"<td>{row.tx_seen}</td>"
             f"<td>{row.miner_seen}</td>"
+            f"<td>{row.log_seen}</td>"
             f"<td>{row.upline_seen}</td>"
             f"<td>{row.nodes_count if row.nodes_count is not None else ''}</td>"
             f"<td class='mono'>{row.upline1 or ''}</td>"
@@ -628,14 +752,14 @@ def write_html(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
       <h1>MarsChain 已发现地址算力榜</h1>
       <div class="sub">
         这份榜单基于 explorer 的公开接口生成，不是官方全网榜。
-        它通过扫描近期区块、交易、以及正算力地址的上级关系，拼出一份更接近全网的 best effort 排行。
+        它通过扫描近期区块、交易、POWER 合约日志、以及正算力地址的上级关系，拼出一份更接近全网的 best effort 排行。
       </div>
       <div class="grid">{summary_html}</div>
     </section>
     <section class="panel">
       <div class="panel-head">
         <div>Top {len(rows)} 地址</div>
-        <div>扫描范围: {meta['tx_pages']} 页交易, {meta['block_pages']} 页区块, upline 深度 {meta['upline_depth']}</div>
+        <div>扫描范围: {meta['tx_pages']} 页交易, {meta['block_pages']} 页区块, {meta.get('rpc_log_blocks_scanned', 0)} 个日志区块, upline 深度 {meta['upline_depth']}</div>
       </div>
       <table>
         <thead>
@@ -646,6 +770,7 @@ def write_html(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
             <th>Total Burned</th>
             <th>Tx Seen</th>
             <th>Miner Seen</th>
+            <th>Log Seen</th>
             <th>Upline Seen</th>
             <th>Nodes</th>
             <th>Upline 1</th>
@@ -686,6 +811,7 @@ def write_xlsx(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
         "Burned Display",
         "Tx Seen",
         "Miner Seen",
+        "Log Seen",
         "Upline Seen",
         "Source Score",
         "Nodes Count",
@@ -706,6 +832,7 @@ def write_xlsx(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
                 row.to_dict()["burned_amount_display"],
                 row.tx_seen,
                 row.miner_seen,
+                row.log_seen,
                 row.upline_seen,
                 row.source_score,
                 row.nodes_count,
@@ -732,11 +859,12 @@ def write_xlsx(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
         8: 18,
         9: 10,
         10: 12,
-        11: 12,
+        11: 10,
         12: 12,
         13: 12,
-        14: 46,
+        14: 12,
         15: 46,
+        16: 46,
     }
     for idx, width in widths.items():
         ws.column_dimensions[get_column_letter(idx)].width = width
@@ -794,6 +922,7 @@ def write_csv(path: Path, rows: list[RankedAddress]) -> None:
                 "burned_amount_display",
                 "tx_seen",
                 "miner_seen",
+                "log_seen",
                 "upline_seen",
                 "source_score",
                 "nodes_count",
@@ -812,6 +941,7 @@ def lookup_power_rows(
     addresses: list[str],
     tx_counter: Counter[str],
     miner_counter: Counter[str],
+    log_counter: Counter[str],
     upline_counter: Counter[str],
     args: argparse.Namespace,
     cache: dict[str, dict[str, Any]],
@@ -834,6 +964,7 @@ def lookup_power_rows(
                 payload,
                 tx_seen=tx_counter[returned_address],
                 miner_seen=miner_counter[returned_address],
+                log_seen=log_counter[returned_address],
                 upline_seen=upline_counter[returned_address],
             )
             if row:
@@ -853,7 +984,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         workers=args.workers,
         progress=args.progress,
     )
+    log_counter: Counter[str] = Counter()
     rpc_meta: dict[str, Any] = {}
+    rpc_log_meta: dict[str, Any] = {}
     rpc_blocks = getattr(args, "rpc_blocks", 0)
     if rpc_blocks:
         rpc_tx_counter, rpc_miner_counter, rpc_meta = collect_rpc_block_candidates(
@@ -868,10 +1001,27 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         tx_counter.update(rpc_tx_counter)
         miner_counter.update(rpc_miner_counter)
 
-    candidates = set(tx_counter) | set(miner_counter)
+    rpc_log_blocks = getattr(args, "rpc_log_blocks", 0)
+    if rpc_log_blocks:
+        log_counter, rpc_log_meta = collect_rpc_log_candidates(
+            rpc_url=getattr(args, "rpc_url", DEFAULT_RPC_URL),
+            rpc_log_blocks=rpc_log_blocks,
+            rpc_log_start_block=getattr(args, "rpc_log_start_block", None),
+            rpc_log_chunk_size=getattr(args, "rpc_log_chunk_size", 50_000),
+            rpc_log_workers=getattr(args, "rpc_log_workers", 3),
+            progress=args.progress,
+        )
+
+    candidates = set(tx_counter) | set(miner_counter) | set(log_counter)
     ordered_candidates = sorted(
         candidates,
-        key=lambda addr: (tx_counter[addr] * 10 + miner_counter[addr] * 20, tx_counter[addr], miner_counter[addr], addr),
+        key=lambda addr: (
+            tx_counter[addr] * 10 + miner_counter[addr] * 20 + log_counter[addr] * 15,
+            log_counter[addr],
+            tx_counter[addr],
+            miner_counter[addr],
+            addr,
+        ),
         reverse=True,
     )
     if args.max_candidates:
@@ -885,6 +1035,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         ordered_candidates,
         tx_counter,
         miner_counter,
+        log_counter,
         upline_counter,
         args,
         cache,
@@ -912,6 +1063,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             next_addresses,
             tx_counter,
             miner_counter,
+            log_counter,
             upline_counter,
             args,
             cache,
@@ -957,6 +1109,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             next_addresses,
             tx_counter,
             miner_counter,
+            log_counter,
             upline_counter,
             args,
             cache,
@@ -1012,6 +1165,16 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "rpc_end_block": rpc_meta.get("rpc_end_block"),
         "rpc_latest_block": rpc_meta.get("rpc_latest_block"),
         "rpc_error_count": rpc_meta.get("rpc_error_count", 0),
+        "rpc_log_enabled": bool(rpc_log_blocks),
+        "rpc_log_contract": rpc_log_meta.get("rpc_log_contract") if rpc_log_meta else None,
+        "rpc_log_blocks_requested": rpc_log_meta.get("rpc_log_blocks_requested", 0),
+        "rpc_log_blocks_scanned": rpc_log_meta.get("rpc_log_blocks_scanned", 0),
+        "rpc_logs_seen": rpc_log_meta.get("rpc_logs_seen", 0),
+        "rpc_log_addresses_seen": rpc_log_meta.get("rpc_log_addresses_seen", 0),
+        "rpc_log_start_block": rpc_log_meta.get("rpc_log_start_block"),
+        "rpc_log_end_block": rpc_log_meta.get("rpc_log_end_block"),
+        "rpc_log_latest_block": rpc_log_meta.get("rpc_log_latest_block"),
+        "rpc_log_error_count": rpc_log_meta.get("rpc_log_error_count", 0),
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
         "upline_limit": args.upline_limit,
@@ -1042,6 +1205,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rpc-start-block", type=int, default=None, help="Highest block number for JSON-RPC scanning; defaults to latest.")
     parser.add_argument("--rpc-batch-size", type=int, default=100, help="Blocks per JSON-RPC batch request.")
     parser.add_argument("--rpc-workers", type=int, default=6, help="Concurrent JSON-RPC batch workers.")
+    parser.add_argument("--rpc-log-blocks", type=int, default=0, help="Recent blocks to scan for POWER contract logs through JSON-RPC.")
+    parser.add_argument("--rpc-log-start-block", type=int, default=None, help="Highest block number for JSON-RPC log scanning; defaults to latest.")
+    parser.add_argument("--rpc-log-chunk-size", type=int, default=50_000, help="Blocks per eth_getLogs range.")
+    parser.add_argument("--rpc-log-workers", type=int, default=3, help="Concurrent eth_getLogs workers.")
     parser.add_argument("--max-candidates", type=int, default=3000, help="Maximum candidate addresses to power-check.")
     parser.add_argument("--top", type=int, default=100, help="Number of ranked rows to output.")
     parser.add_argument("--workers", type=int, default=16, help="Concurrent power lookups.")

@@ -18,7 +18,7 @@ SCAN_TIERS = [
     {
         "tx_pages": 1200,
         "block_pages": 200,
-        "max_candidates": 30000,
+        "max_candidates": 0,
         "upline_limit": 20000,
         "upline_depth": 6,
         "workers": 32,
@@ -27,6 +27,7 @@ SCAN_TIERS = [
         "history_seed_limit": 150,
         "history_candidate_limit": 20000,
         "rpc_blocks": 5000,
+        "rpc_log_blocks": 50000,
     },
     {
         "tx_pages": 3000,
@@ -40,6 +41,7 @@ SCAN_TIERS = [
         "history_seed_limit": 250,
         "history_candidate_limit": 40000,
         "rpc_blocks": 20000,
+        "rpc_log_blocks": 200000,
     },
     {
         "tx_pages": 5000,
@@ -53,6 +55,7 @@ SCAN_TIERS = [
         "history_seed_limit": 300,
         "history_candidate_limit": 60000,
         "rpc_blocks": 50000,
+        "rpc_log_blocks": 500000,
     },
     {
         "tx_pages": 8000,
@@ -66,6 +69,7 @@ SCAN_TIERS = [
         "history_seed_limit": 400,
         "history_candidate_limit": 120000,
         "rpc_blocks": 100000,
+        "rpc_log_blocks": 1000000,
     },
     {
         "tx_pages": 12000,
@@ -79,6 +83,7 @@ SCAN_TIERS = [
         "history_seed_limit": 500,
         "history_candidate_limit": 200000,
         "rpc_blocks": 200000,
+        "rpc_log_blocks": 2000000,
     },
 ]
 
@@ -95,6 +100,7 @@ def make_args(
     history_seed_limit: int,
     history_candidate_limit: int,
     rpc_blocks: int,
+    rpc_log_blocks: int,
     cache_file: Path,
 ) -> Namespace:
     return Namespace(
@@ -107,6 +113,10 @@ def make_args(
         rpc_start_block=None,
         rpc_batch_size=100,
         rpc_workers=6,
+        rpc_log_blocks=rpc_log_blocks,
+        rpc_log_start_block=None,
+        rpc_log_chunk_size=50000,
+        rpc_log_workers=3,
         max_candidates=max_candidates,
         top=100,
         workers=workers,
@@ -179,6 +189,7 @@ def main() -> int:
             history_seed_limit=tier["history_seed_limit"],
             history_candidate_limit=tier["history_candidate_limit"],
             rpc_blocks=tier["rpc_blocks"],
+            rpc_log_blocks=tier["rpc_log_blocks"],
             cache_file=cache_file,
         )
         rows, meta = build_ranking(run_args)
@@ -238,6 +249,11 @@ def main() -> int:
                 "rpc_transactions_seen": chosen_meta.get("rpc_transactions_seen", 0),
                 "rpc_start_block": chosen_meta.get("rpc_start_block"),
                 "rpc_end_block": chosen_meta.get("rpc_end_block"),
+                "rpc_log_blocks_scanned": chosen_meta.get("rpc_log_blocks_scanned", 0),
+                "rpc_logs_seen": chosen_meta.get("rpc_logs_seen", 0),
+                "rpc_log_addresses_seen": chosen_meta.get("rpc_log_addresses_seen", 0),
+                "rpc_log_start_block": chosen_meta.get("rpc_log_start_block"),
+                "rpc_log_end_block": chosen_meta.get("rpc_log_end_block"),
                 "tier_label": chosen_meta["tier_label"],
                 "history_json": str(json_path),
                 "history_csv": str(csv_path),
@@ -268,6 +284,11 @@ def main() -> int:
         "rpc_transactions_seen": chosen_meta.get("rpc_transactions_seen", 0),
         "rpc_start_block": chosen_meta.get("rpc_start_block"),
         "rpc_end_block": chosen_meta.get("rpc_end_block"),
+        "rpc_log_blocks_scanned": chosen_meta.get("rpc_log_blocks_scanned", 0),
+        "rpc_logs_seen": chosen_meta.get("rpc_logs_seen", 0),
+        "rpc_log_addresses_seen": chosen_meta.get("rpc_log_addresses_seen", 0),
+        "rpc_log_start_block": chosen_meta.get("rpc_log_start_block"),
+        "rpc_log_end_block": chosen_meta.get("rpc_log_end_block"),
         "tier_label": chosen_meta["tier_label"],
         "history_json": str(json_path),
     }

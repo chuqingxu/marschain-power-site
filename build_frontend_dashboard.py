@@ -75,6 +75,8 @@ def build_html(payload: dict) -> str:
     target_met = bool(meta.get("target_met", meta.get("discovered_power_coverage", 0) >= coverage_target))
     threshold_label = f"{coverage_target * 100:.0f}%"
     rpc_blocks_scanned = int(meta.get("rpc_blocks_scanned", 0) or 0)
+    rpc_log_blocks_scanned = int(meta.get("rpc_log_blocks_scanned", 0) or 0)
+    rpc_logs_seen = int(meta.get("rpc_logs_seen", 0) or 0)
     subtitle = (
         f"基于公开 explorer API 与官方 RPC 的深度扫描结果，当前覆盖率已达到 {threshold_label} 发布阈值。"
         if target_met
@@ -536,6 +538,7 @@ def build_html(payload: dict) -> str:
             <span>交易扫描：{meta["tx_pages"]} 页</span>
             <span>区块扫描：{meta["block_pages"]} 页</span>
             <span>RPC 深扫：{rpc_blocks_scanned:,} 块</span>
+            <span>合约日志：{rpc_log_blocks_scanned:,} 块 / {rpc_logs_seen:,} 条</span>
             <span>上级递归深度：{meta["upline_depth"]}</span>
           </div>
           <div class="action-row">
@@ -602,6 +605,7 @@ def build_html(payload: dict) -> str:
                 <th data-key="power">算力</th>
                 <th data-key="total_burned_amount">累计燃烧</th>
                 <th data-key="tx_seen">交易命中</th>
+                <th data-key="log_seen">日志命中</th>
                 <th data-key="upline_seen">上级命中</th>
                 <th data-key="upline1">一级上级</th>
                 <th data-key="upline2">二级上级</th>
@@ -650,6 +654,7 @@ def build_html(payload: dict) -> str:
       power_num: Number(row.power),
       burned_num: Number(row.total_burned_amount),
       tx_seen_num: Number(row.tx_seen),
+      log_seen_num: Number(row.log_seen || 0),
       upline_seen_num: Number(row.upline_seen),
       search_blob: [
         row.address,
@@ -695,7 +700,9 @@ def build_html(payload: dict) -> str:
         ['前 100 名总算力', formatUnits(rows.slice(0, 100).reduce((sum, row) => sum + row.power_num, 0))],
         ['交易扫描页', meta.tx_pages.toLocaleString()],
         ['区块扫描页', meta.block_pages.toLocaleString()],
-        ['RPC 深扫区块', Number(meta.rpc_blocks_scanned || 0).toLocaleString()]
+        ['RPC 深扫区块', Number(meta.rpc_blocks_scanned || 0).toLocaleString()],
+        ['合约日志区块', Number(meta.rpc_log_blocks_scanned || 0).toLocaleString()],
+        ['合约日志条数', Number(meta.rpc_logs_seen || 0).toLocaleString()]
       ];
       document.getElementById('statGrid').innerHTML = cards.map(([label, value]) => `
         <div class="stat-card">
@@ -773,6 +780,7 @@ def build_html(payload: dict) -> str:
           power: [a.power_num, b.power_num],
           total_burned_amount: [a.burned_num, b.burned_num],
           tx_seen: [a.tx_seen_num, b.tx_seen_num],
+          log_seen: [a.log_seen_num, b.log_seen_num],
           upline_seen: [a.upline_seen_num, b.upline_seen_num],
           upline1: [a.upline1 || '', b.upline1 || ''],
           upline2: [a.upline2 || '', b.upline2 || '']
@@ -793,6 +801,7 @@ def build_html(payload: dict) -> str:
           <td><span class="pill">${{row.power_display}}</span></td>
           <td>${{row.total_burned_amount_display}}</td>
           <td>${{row.tx_seen}}</td>
+          <td>${{row.log_seen || 0}}</td>
           <td>${{row.upline_seen}}</td>
           <td class="mono">${{row.upline1 || '—'}}</td>
           <td class="mono">${{row.upline2 || '—'}}</td>
