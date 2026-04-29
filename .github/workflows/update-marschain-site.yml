@@ -9,6 +9,7 @@ on:
       - ".github/workflows/update-marschain-site.yml"
       - "build_frontend_dashboard.py"
       - "deploy_to_oss.py"
+      - "marschain_power_rank.py"
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
@@ -56,7 +57,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Refresh site with 80% coverage rule
+      - name: Refresh site with best-effort coverage
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
 
