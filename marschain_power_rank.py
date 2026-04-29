@@ -28,6 +28,7 @@ from typing import Any
 BASE_URL = "https://explorer.marschain.net/api"
 DEFAULT_RPC_URL = "https://rpcs.marschain.net"
 POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
+DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json, text/plain, */*",
@@ -75,7 +76,7 @@ class RankedAddress:
         }
 
 
-def request_json(path: str, params: dict[str, Any] | None = None, retries: int = 3) -> Any:
+def request_json(path: str, params: dict[str, Any] | None = None, retries: int = 6) -> Any:
     if path.startswith("http://") or path.startswith("https://"):
         url = path
     else:
@@ -93,13 +94,13 @@ def request_json(path: str, params: dict[str, Any] | None = None, retries: int =
             body = exc.read().decode("utf-8", "replace")
             last_error = RuntimeError(f"HTTP {exc.code} for {url}: {body[:200]}")
             if exc.code in {429, 500, 502, 503, 504} and attempt < retries:
-                time.sleep(0.6 * attempt)
+                time.sleep(min(10, 0.8 * attempt * attempt))
                 continue
             raise last_error
         except Exception as exc:  # pragma: no cover - network variability
             last_error = exc
             if attempt < retries:
-                time.sleep(0.6 * attempt)
+                time.sleep(min(10, 0.8 * attempt * attempt))
                 continue
             raise
     if last_error:
@@ -107,7 +108,7 @@ def request_json(path: str, params: dict[str, Any] | None = None, retries: int =
     raise RuntimeError(f"Request failed for {url}")
 
 
-def rpc_json(rpc_url: str, payload: dict[str, Any] | list[dict[str, Any]], retries: int = 3) -> Any:
+def rpc_json(rpc_url: str, payload: dict[str, Any] | list[dict[str, Any]], retries: int = 5) -> Any:
     data = json.dumps(payload).encode("utf-8")
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -121,7 +122,7 @@ def rpc_json(rpc_url: str, payload: dict[str, Any] | list[dict[str, Any]], retri
         except Exception as exc:  # pragma: no cover - public RPC variability
             last_error = exc
             if attempt < retries:
-                time.sleep(0.8 * attempt)
+                time.sleep(min(10, 0.8 * attempt * attempt))
                 continue
             raise
     if last_error:
@@ -226,6 +227,17 @@ def save_cache(path: Path | None, cache: dict[str, dict[str, Any]]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cache, ensure_ascii=False, indent=2) + "\n")
+
+
+def is_cache_entry_fresh(payload: dict[str, Any], ttl_seconds: int | None) -> bool:
+    if ttl_seconds is None or ttl_seconds < 0:
+        return True
+    if ttl_seconds == 0:
+        return False
+    cached_at = payload.get("cached_at")
+    if not isinstance(cached_at, int | float):
+        return False
+    return int(time.time()) - int(cached_at) <= ttl_seconds
 
 
 def collect_candidates(
@@ -432,12 +444,14 @@ def collect_rpc_log_candidates(
 
     high_block = latest_block if rpc_log_start_block is None else min(rpc_log_start_block, latest_block)
     low_block = max(0, high_block - rpc_log_blocks + 1)
+    effective_blocks = high_block - low_block + 1
     chunk_size = max(1, min(rpc_log_chunk_size, 100_000))
     meta.update(
         {
             "rpc_log_latest_block": latest_block,
             "rpc_log_start_block": high_block,
             "rpc_log_end_block": low_block,
+            "rpc_log_blocks_effective": effective_blocks,
             "rpc_log_chunk_size": chunk_size,
             "rpc_log_workers": rpc_log_workers,
         }
@@ -496,7 +510,7 @@ def collect_rpc_log_candidates(
             if progress and idx % 5 == 0:
                 print(
                     f"[info] rpc log scan: {idx}/{len(ranges)} ranges, "
-                    f"{meta['rpc_log_blocks_scanned']}/{rpc_log_blocks} blocks, "
+                    f"{meta['rpc_log_blocks_scanned']}/{effective_blocks} blocks, "
                     f"{meta['rpc_logs_seen']} logs",
                     file=sys.stderr,
                 )
@@ -533,15 +547,26 @@ def build_row_from_payload(
     )
 
 
-def fetch_power_payload(address: str, cache: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any], bool]:
+def fetch_power_payload(
+    address: str,
+    cache: dict[str, dict[str, Any]],
+    cache_ttl_seconds: int | None,
+) -> tuple[str, dict[str, Any], str]:
     cached = cache.get(address)
-    if cached is not None:
-        return address, cached, True
-    payload = request_json(f"/power/{address}")
+    if cached is not None and is_cache_entry_fresh(cached, cache_ttl_seconds):
+        return address, cached, "hit"
+    try:
+        payload = request_json(f"/power/{address}")
+    except Exception:
+        if cached is not None:
+            # Keep publishing from the last known value if the public explorer API
+            # has a transient failure, but do not mark the stale value as fresh.
+            return address, dict(cached), "stale_fallback"
+        raise
     if isinstance(payload, dict):
         payload = dict(payload)
         payload["cached_at"] = int(time.time())
-    return address, payload, False
+    return address, payload, "refreshed"
 
 
 def enrich_nodes(address: str) -> int | None:
@@ -946,18 +971,23 @@ def lookup_power_rows(
     args: argparse.Namespace,
     cache: dict[str, dict[str, Any]],
     progress_label: str,
-) -> tuple[list[RankedAddress], dict[str, dict[str, Any]]]:
+) -> tuple[list[RankedAddress], dict[str, dict[str, Any]], Counter[str]]:
     rows: list[RankedAddress] = []
     cache_updates: dict[str, dict[str, Any]] = {}
+    cache_stats: Counter[str] = Counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        future_map = {pool.submit(fetch_power_payload, address, cache): address for address in addresses}
+        future_map = {
+            pool.submit(fetch_power_payload, address, cache, args.cache_ttl_seconds): address
+            for address in addresses
+        }
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
             address = future_map[future]
             try:
-                returned_address, payload, _ = future.result()
+                returned_address, payload, cache_status = future.result()
             except Exception as exc:
                 print(f"[warn] power lookup failed for {address}: {exc}", file=sys.stderr)
                 continue
+            cache_stats[cache_status] += 1
             cache_updates[returned_address] = payload
             row = build_row_from_payload(
                 returned_address,
@@ -971,7 +1001,7 @@ def lookup_power_rows(
                 rows.append(row)
             if args.progress and idx % 100 == 0:
                 print(f"[info] {progress_label}: checked {idx}/{len(addresses)} candidates", file=sys.stderr)
-    return rows, cache_updates
+    return rows, cache_updates, cache_stats
 
 
 def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[str, Any]]:
@@ -1028,10 +1058,11 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         ordered_candidates = ordered_candidates[: args.max_candidates]
 
     cache = load_cache(Path(args.cache_file) if args.cache_file else None)
+    cache_lookup_stats: Counter[str] = Counter()
     upline_counter: Counter[str] = Counter()
     rows_map: dict[str, RankedAddress] = {}
 
-    initial_rows, cache_updates = lookup_power_rows(
+    initial_rows, cache_updates, cache_stats = lookup_power_rows(
         ordered_candidates,
         tx_counter,
         miner_counter,
@@ -1041,6 +1072,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         cache,
         "initial",
     )
+    cache_lookup_stats.update(cache_stats)
     cache.update(cache_updates)
     for row in initial_rows:
         rows_map[row.address] = row
@@ -1059,7 +1091,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             break
         seen_addresses.update(next_addresses)
         upline_counter.update(next_counter)
-        depth_rows, cache_updates = lookup_power_rows(
+        depth_rows, cache_updates, cache_stats = lookup_power_rows(
             next_addresses,
             tx_counter,
             miner_counter,
@@ -1069,6 +1101,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             cache,
             f"upline-depth-{depth}",
         )
+        cache_lookup_stats.update(cache_stats)
         cache.update(cache_updates)
         for row in depth_rows:
             rows_map[row.address] = row
@@ -1105,7 +1138,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
 
         seen_addresses.update(next_addresses)
         tx_counter.update(history_counter)
-        depth_rows, cache_updates = lookup_power_rows(
+        depth_rows, cache_updates, cache_stats = lookup_power_rows(
             next_addresses,
             tx_counter,
             miner_counter,
@@ -1115,6 +1148,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             cache,
             f"history-depth-{depth}",
         )
+        cache_lookup_stats.update(cache_stats)
         cache.update(cache_updates)
         for row in depth_rows:
             rows_map[row.address] = row
@@ -1168,6 +1202,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "rpc_log_enabled": bool(rpc_log_blocks),
         "rpc_log_contract": rpc_log_meta.get("rpc_log_contract") if rpc_log_meta else None,
         "rpc_log_blocks_requested": rpc_log_meta.get("rpc_log_blocks_requested", 0),
+        "rpc_log_blocks_effective": rpc_log_meta.get("rpc_log_blocks_effective", 0),
         "rpc_log_blocks_scanned": rpc_log_meta.get("rpc_log_blocks_scanned", 0),
         "rpc_logs_seen": rpc_log_meta.get("rpc_logs_seen", 0),
         "rpc_log_addresses_seen": rpc_log_meta.get("rpc_log_addresses_seen", 0),
@@ -1183,6 +1218,10 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "history_tx_limit": args.history_tx_limit,
         "history_seed_limit": args.history_seed_limit,
         "history_candidate_limit": args.history_candidate_limit,
+        "power_cache_ttl_seconds": args.cache_ttl_seconds,
+        "power_cache_hits": cache_lookup_stats.get("hit", 0),
+        "power_cache_refreshed": cache_lookup_stats.get("refreshed", 0),
+        "power_cache_stale_fallbacks": cache_lookup_stats.get("stale_fallback", 0),
         "seed_candidate_count": len(ordered_candidates),
         "candidate_count": len(seen_addresses),
         "positive_power_count": len(all_rows),
@@ -1224,6 +1263,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="output", help="Directory for JSON and CSV outputs.")
     parser.add_argument("--prefix", default="marschain_power_rank", help="Output filename prefix.")
     parser.add_argument("--cache-file", default="output/marschain_power_cache.json", help="Power lookup cache JSON path.")
+    parser.add_argument(
+        "--cache-ttl-seconds",
+        type=int,
+        default=DEFAULT_CACHE_TTL_SECONDS,
+        help="Power lookup cache TTL. Use 0 to force refresh; use -1 to trust cache forever.",
+    )
     parser.add_argument("--progress", action="store_true", help="Print progress to stderr.")
     return parser.parse_args()
 

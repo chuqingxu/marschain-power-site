@@ -11,7 +11,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from build_frontend_dashboard import build_html
-from marschain_power_rank import build_ranking, write_csv, write_html, write_json, write_xlsx
+from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
 
 
 SCAN_TIERS = [
@@ -21,13 +21,13 @@ SCAN_TIERS = [
         "max_candidates": 0,
         "upline_limit": 0,
         "upline_depth": 0,
-        "workers": 48,
+        "workers": 16,
         "history_depth": 0,
         "history_pages": 0,
         "history_seed_limit": 0,
         "history_candidate_limit": 0,
         "rpc_blocks": 0,
-        "rpc_log_blocks": 2000000,
+        "rpc_log_blocks": 10000000,
     },
 ]
 
@@ -46,6 +46,7 @@ def make_args(
     rpc_blocks: int,
     rpc_log_blocks: int,
     cache_file: Path,
+    cache_ttl_seconds: int,
 ) -> Namespace:
     return Namespace(
         tx_pages=tx_pages,
@@ -60,7 +61,7 @@ def make_args(
         rpc_log_blocks=rpc_log_blocks,
         rpc_log_start_block=None,
         rpc_log_chunk_size=100000,
-        rpc_log_workers=6,
+        rpc_log_workers=4,
         max_candidates=max_candidates,
         top=100,
         workers=workers,
@@ -76,6 +77,7 @@ def make_args(
         output_dir="output",
         prefix="marschain_power_rank",
         cache_file=str(cache_file),
+        cache_ttl_seconds=cache_ttl_seconds,
         progress=True,
     )
 
@@ -100,6 +102,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="output", help="Directory for generated ranking files.")
     parser.add_argument("--site-dir", default="site", help="Directory for deployable static site output.")
     parser.add_argument("--cache-file", default="output/marschain_power_cache.json", help="Shared cache file for power lookups.")
+    parser.add_argument(
+        "--cache-ttl-seconds",
+        type=int,
+        default=DEFAULT_CACHE_TTL_SECONDS,
+        help="Power lookup cache TTL. The default is shorter than the 5-hour schedule so each scheduled build refreshes power data.",
+    )
     return parser.parse_args()
 
 
@@ -135,6 +143,7 @@ def main() -> int:
             rpc_blocks=tier["rpc_blocks"],
             rpc_log_blocks=tier["rpc_log_blocks"],
             cache_file=cache_file,
+            cache_ttl_seconds=args.cache_ttl_seconds,
         )
         rows, meta = build_ranking(run_args)
         coverage = meta["discovered_power_coverage"]
@@ -193,11 +202,16 @@ def main() -> int:
                 "rpc_transactions_seen": chosen_meta.get("rpc_transactions_seen", 0),
                 "rpc_start_block": chosen_meta.get("rpc_start_block"),
                 "rpc_end_block": chosen_meta.get("rpc_end_block"),
+                "rpc_log_blocks_effective": chosen_meta.get("rpc_log_blocks_effective", 0),
                 "rpc_log_blocks_scanned": chosen_meta.get("rpc_log_blocks_scanned", 0),
                 "rpc_logs_seen": chosen_meta.get("rpc_logs_seen", 0),
                 "rpc_log_addresses_seen": chosen_meta.get("rpc_log_addresses_seen", 0),
                 "rpc_log_start_block": chosen_meta.get("rpc_log_start_block"),
                 "rpc_log_end_block": chosen_meta.get("rpc_log_end_block"),
+                "power_cache_ttl_seconds": chosen_meta.get("power_cache_ttl_seconds"),
+                "power_cache_hits": chosen_meta.get("power_cache_hits", 0),
+                "power_cache_refreshed": chosen_meta.get("power_cache_refreshed", 0),
+                "power_cache_stale_fallbacks": chosen_meta.get("power_cache_stale_fallbacks", 0),
                 "tier_label": chosen_meta["tier_label"],
                 "history_json": str(json_path),
                 "history_csv": str(csv_path),
@@ -228,11 +242,16 @@ def main() -> int:
         "rpc_transactions_seen": chosen_meta.get("rpc_transactions_seen", 0),
         "rpc_start_block": chosen_meta.get("rpc_start_block"),
         "rpc_end_block": chosen_meta.get("rpc_end_block"),
+        "rpc_log_blocks_effective": chosen_meta.get("rpc_log_blocks_effective", 0),
         "rpc_log_blocks_scanned": chosen_meta.get("rpc_log_blocks_scanned", 0),
         "rpc_logs_seen": chosen_meta.get("rpc_logs_seen", 0),
         "rpc_log_addresses_seen": chosen_meta.get("rpc_log_addresses_seen", 0),
         "rpc_log_start_block": chosen_meta.get("rpc_log_start_block"),
         "rpc_log_end_block": chosen_meta.get("rpc_log_end_block"),
+        "power_cache_ttl_seconds": chosen_meta.get("power_cache_ttl_seconds"),
+        "power_cache_hits": chosen_meta.get("power_cache_hits", 0),
+        "power_cache_refreshed": chosen_meta.get("power_cache_refreshed", 0),
+        "power_cache_stale_fallbacks": chosen_meta.get("power_cache_stale_fallbacks", 0),
         "tier_label": chosen_meta["tier_label"],
         "history_json": str(json_path),
     }
