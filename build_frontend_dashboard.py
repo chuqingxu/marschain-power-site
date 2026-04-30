@@ -123,127 +123,187 @@ def build_html(payload: dict) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
   <meta name="description" content="{subtitle}">
-  <meta name="theme-color" content="#08111f">
+  <meta name="theme-color" content="#07080d">
   <meta property="og:title" content="{title}">
   <meta property="og:description" content="{subtitle}">
   <meta property="og:type" content="website">
 {analytics_head}
   <style>
     :root {{
-      --bg: #08111f;
-      --bg-2: #0c1830;
-      --panel: rgba(255, 255, 255, 0.065);
-      --panel-strong: rgba(255, 255, 255, 0.1);
-      --line: rgba(150, 190, 255, 0.18);
-      --text: #eef4ff;
-      --muted: #96a8ca;
-      --accent: #4da3ff;
-      --accent-2: #f59e0b;
-      --good: #22c55e;
-      --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
-      --radius: 24px;
-      --font: "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
-      --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      --bg: #07080d;
+      --bg-2: #0b0d14;
+      --surface: rgba(16, 18, 26, 0.72);
+      --surface-strong: rgba(23, 26, 36, 0.88);
+      --surface-soft: rgba(255, 255, 255, 0.035);
+      --line: rgba(255, 255, 255, 0.09);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --text: #f7f8fb;
+      --muted: #9aa0ad;
+      --muted-2: #6f7685;
+      --accent: #8f92ff;
+      --accent-2: #7dd3fc;
+      --good: #64d98a;
+      --warn: #f4c06a;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
+      --radius: 20px;
+      --font: "Avenir Next", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+      --mono: "SFMono-Regular", "JetBrains Mono", ui-monospace, Menlo, monospace;
     }}
     * {{ box-sizing: border-box; }}
+    html {{ color-scheme: dark; }}
     body {{
       margin: 0;
+      min-height: 100vh;
       font-family: var(--font);
       color: var(--text);
       background:
-        radial-gradient(circle at 15% 10%, rgba(77, 163, 255, 0.18), transparent 24%),
-        radial-gradient(circle at 88% 0%, rgba(245, 158, 11, 0.16), transparent 22%),
-        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+        radial-gradient(circle at 50% -10%, rgba(143, 146, 255, 0.18), transparent 34%),
+        radial-gradient(circle at 8% 22%, rgba(125, 211, 252, 0.08), transparent 28%),
+        radial-gradient(circle at 92% 12%, rgba(255, 255, 255, 0.08), transparent 20%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 68%, #07080d 100%);
+    }}
+    body::before {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.7), transparent 72%);
     }}
     .wrap {{
-      width: min(1440px, calc(100vw - 32px));
+      position: relative;
+      z-index: 1;
+      width: min(1360px, calc(100vw - 36px));
       margin: 0 auto;
-      padding: 28px 0 40px;
+      padding: 32px 0 44px;
     }}
     .hero {{
       position: relative;
       overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 32px;
-      padding: 34px;
+      border-radius: 28px;
+      padding: 38px;
       background:
-        linear-gradient(135deg, rgba(13, 27, 53, 0.95), rgba(8, 17, 31, 0.98)),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
-      box-shadow: var(--shadow);
+        linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025)),
+        radial-gradient(circle at 80% 5%, rgba(143, 146, 255, 0.22), transparent 30%),
+        rgba(10, 11, 16, 0.82);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+    }}
+    .hero::before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+      opacity: 0.35;
+      pointer-events: none;
     }}
     .hero::after {{
       content: "";
       position: absolute;
-      right: -60px;
-      top: -60px;
-      width: 220px;
-      height: 220px;
+      right: -130px;
+      top: -130px;
+      width: 320px;
+      height: 320px;
       border-radius: 999px;
-      background: radial-gradient(circle at center, rgba(77, 163, 255, 0.45), rgba(77, 163, 255, 0) 70%);
+      border: 1px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle at center, rgba(143, 146, 255, 0.28), rgba(143, 146, 255, 0) 68%);
       pointer-events: none;
     }}
     .eyebrow {{
-      margin: 0 0 10px;
-      color: #7db8ff;
-      font-size: 12px;
-      letter-spacing: 0.16em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.035);
+      color: #c5c8ff;
+      font-size: 11px;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
     }}
+    .eyebrow::before {{
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--good);
+      box-shadow: 0 0 18px rgba(100, 217, 138, 0.8);
+    }}
     .hero-grid {{
+      position: relative;
       display: grid;
-      grid-template-columns: minmax(0, 1.5fr) 320px;
-      gap: 24px;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 28px;
       align-items: end;
     }}
     h1 {{
       margin: 0;
-      font-size: clamp(34px, 5vw, 56px);
-      line-height: 1.04;
-      letter-spacing: -0.03em;
-      max-width: 11ch;
+      max-width: 820px;
+      font-size: clamp(38px, 5.3vw, 72px);
+      line-height: 0.96;
+      letter-spacing: -0.07em;
+      text-wrap: balance;
     }}
     .subtitle {{
-      margin: 14px 0 0;
-      max-width: 760px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.7;
+      margin: 18px 0 0;
+      max-width: 820px;
+      color: #b4bac8;
+      font-size: 15px;
+      line-height: 1.8;
     }}
     .hero-meta {{
       display: flex;
       flex-wrap: wrap;
-      gap: 10px 18px;
-      margin-top: 22px;
+      gap: 8px;
+      margin-top: 24px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
+    }}
+    .hero-meta span {{
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.035);
+      font-family: var(--mono);
     }}
     .coverage {{
       justify-self: end;
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 28px;
-      padding: 20px;
-      background: rgba(255, 255, 255, 0.04);
+      border-radius: 24px;
+      padding: 18px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)),
+        rgba(7, 8, 13, 0.55);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
     }}
     .coverage-ring {{
       --pct: 0deg;
-      width: 160px;
-      height: 160px;
-      margin: 0 auto 18px;
+      width: 146px;
+      height: 146px;
+      margin: 0 auto 16px;
       border-radius: 999px;
       background:
-        radial-gradient(circle at center, rgba(8, 17, 31, 1) 0 58%, transparent 59%),
+        radial-gradient(circle at center, #0a0c12 0 57%, transparent 58%),
         conic-gradient(var(--accent) 0 var(--pct), rgba(255,255,255,0.08) var(--pct) 360deg);
       display: grid;
       place-items: center;
       position: relative;
+      box-shadow: 0 0 50px rgba(143, 146, 255, 0.12);
     }}
     .coverage-ring::before {{
       content: "";
       position: absolute;
-      inset: 14px;
+      inset: 13px;
       border-radius: inherit;
       border: 1px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle, rgba(255,255,255,0.04), transparent 66%);
     }}
     .coverage-value {{
       position: relative;
@@ -252,180 +312,220 @@ def build_html(payload: dict) -> str:
     }}
     .coverage-value strong {{
       display: block;
-      font-size: 34px;
+      font-size: 30px;
       line-height: 1;
+      letter-spacing: -0.06em;
     }}
     .coverage-value span {{
       display: block;
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 12px;
-      letter-spacing: 0.08em;
+      margin-top: 7px;
+      color: var(--muted-2);
+      font-size: 11px;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }}
     .stat-grid {{
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 18px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
     }}
     .alert {{
       display: flex;
       gap: 12px;
       align-items: flex-start;
-      margin-top: 18px;
-      padding: 16px 18px;
-      border-radius: 18px;
-      border: 1px solid rgba(245, 158, 11, 0.22);
-      background: rgba(245, 158, 11, 0.1);
-      color: #fde7ba;
+      margin-top: 12px;
+      padding: 13px 15px;
+      border-radius: 16px;
+      border: 1px solid rgba(244, 192, 106, 0.2);
+      background: rgba(244, 192, 106, 0.075);
+      color: #f5d79a;
       line-height: 1.6;
-      box-shadow: var(--shadow);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
     }}
     .alert.info {{
-      border-color: rgba(77, 163, 255, 0.22);
-      background: rgba(77, 163, 255, 0.1);
-      color: #dbeafe;
+      border-color: rgba(143, 146, 255, 0.2);
+      background: rgba(143, 146, 255, 0.075);
+      color: #d7dafd;
     }}
     .alert.info strong {{
-      color: #9ed0ff;
+      color: #cbcfff;
     }}
     .alert strong {{
       flex: 0 0 auto;
-      color: #ffd484;
-      font-size: 13px;
-      letter-spacing: 0.04em;
+      color: #ffe0a3;
+      font-size: 12px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }}
     .alert span {{
-      font-size: 13px;
+      font-size: 12px;
     }}
     .stat-card, .section, .top-card, .table-shell {{
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
+      background: var(--surface);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
+      backdrop-filter: blur(18px);
     }}
     .stat-card {{
-      padding: 18px;
+      min-height: 150px;
+      padding: 15px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.025)),
+        rgba(13, 15, 22, 0.72);
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }}
+    .stat-card:hover {{
+      transform: translateY(-2px);
+      border-color: var(--line-strong);
+      background: rgba(18, 20, 30, 0.86);
     }}
     .stat-card .label-row {{
       display: flex;
       align-items: center;
       gap: 7px;
       color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 8px;
+      font-size: 11px;
+      margin-bottom: 10px;
+      letter-spacing: 0.03em;
     }}
     .info-dot {{
       display: inline-grid;
       place-items: center;
-      width: 16px;
-      height: 16px;
+      width: 15px;
+      height: 15px;
       border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.2);
-      color: #9ed0ff;
-      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.16);
+      color: #c5c8ff;
+      background: rgba(255,255,255,0.04);
+      font-size: 10px;
       line-height: 1;
       cursor: help;
     }}
     .stat-card .value {{
-      font-size: clamp(20px, 2vw, 30px);
-      line-height: 1.1;
-      letter-spacing: -0.03em;
+      font-size: clamp(22px, 2.2vw, 34px);
+      line-height: 1;
+      letter-spacing: -0.055em;
       font-weight: 700;
     }}
     .stat-card .help {{
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
+      margin-top: 12px;
+      color: var(--muted-2);
+      font-size: 11px;
+      line-height: 1.55;
     }}
     .section {{
-      margin-top: 18px;
-      padding: 24px;
+      margin-top: 14px;
+      padding: 20px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.052), rgba(255,255,255,0.02)),
+        rgba(11, 13, 20, 0.66);
     }}
     .section-head {{
       display: flex;
       justify-content: space-between;
       align-items: end;
       gap: 20px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }}
     .section-title {{
       margin: 0;
-      font-size: 24px;
+      font-size: 20px;
       line-height: 1.1;
-      letter-spacing: -0.03em;
+      letter-spacing: -0.045em;
     }}
     .section-note {{
+      margin-top: 8px;
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
+      font-size: 12px;
+      line-height: 1.65;
       max-width: 760px;
     }}
     .top-grid {{
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
     }}
     .top-card {{
-      padding: 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      position: relative;
+      overflow: hidden;
+      padding: 16px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(143,146,255,0.14), transparent 42%),
+        linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.024));
+    }}
+    .top-card::before {{
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
     }}
     .top-rank {{
       color: var(--accent-2);
-      font-size: 13px;
+      font-family: var(--mono);
+      font-size: 11px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }}
     .top-power {{
-      margin-top: 12px;
-      font-size: 30px;
+      margin-top: 14px;
+      font-size: 28px;
       font-weight: 700;
       line-height: 1;
-      letter-spacing: -0.04em;
+      letter-spacing: -0.055em;
     }}
     .top-address {{
-      margin-top: 12px;
+      margin-top: 14px;
       font-family: var(--mono);
-      font-size: 12px;
-      color: #d5e6ff;
+      font-size: 11px;
+      color: #d8dafe;
       word-break: break-all;
     }}
     .top-sub {{
       margin-top: 10px;
-      font-size: 12px;
-      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted-2);
     }}
     .bar-list {{
       display: grid;
-      gap: 14px;
+      gap: 11px;
     }}
     .bar-row {{
       display: grid;
-      grid-template-columns: 28px 1.3fr minmax(180px, 3fr) 110px;
+      grid-template-columns: 26px minmax(170px, 1.1fr) minmax(180px, 3fr) 96px;
       gap: 12px;
       align-items: center;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+    }}
+    .bar-row:hover {{
+      border-color: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
     }}
     .bar-rank {{
-      color: var(--muted);
-      font-size: 13px;
+      color: var(--muted-2);
+      font-family: var(--mono);
+      font-size: 12px;
     }}
     .bar-label {{
       font-family: var(--mono);
-      font-size: 12px;
-      color: #d9e7ff;
+      font-size: 11px;
+      color: #d8dafe;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }}
     .bar-track {{
       position: relative;
-      height: 12px;
+      height: 8px;
       border-radius: 999px;
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.07);
       overflow: hidden;
     }}
     .bar-fill {{
@@ -433,11 +533,13 @@ def build_html(payload: dict) -> str:
       inset: 0 auto 0 0;
       width: 0%;
       border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent), #7cc4ff);
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 22px rgba(143,146,255,0.35);
     }}
     .bar-value {{
       text-align: right;
-      font-size: 13px;
+      font-family: var(--mono);
+      font-size: 12px;
       color: var(--text);
     }}
     .toolbar {{
@@ -445,117 +547,136 @@ def build_html(payload: dict) -> str:
       flex-wrap: wrap;
       gap: 10px;
       align-items: center;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }}
     .action-row {{
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 18px;
+      gap: 9px;
+      margin-top: 24px;
     }}
     .action-btn {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
-      padding: 0 16px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06);
+      min-height: 38px;
+      padding: 0 13px;
+      border-radius: 11px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.045);
       color: var(--text);
       text-decoration: none;
-      font-size: 13px;
-      transition: 0.2s ease;
+      font-size: 12px;
+      transition: 0.18s ease;
     }}
     .action-btn:hover {{
       transform: translateY(-1px);
-      border-color: rgba(77, 163, 255, 0.45);
-      background: rgba(77, 163, 255, 0.14);
+      border-color: rgba(143, 146, 255, 0.4);
+      background: rgba(143, 146, 255, 0.12);
     }}
     .search {{
       flex: 1 1 360px;
       min-width: 260px;
-      padding: 14px 16px;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(8, 17, 31, 0.6);
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(7, 8, 13, 0.65);
       color: var(--text);
       font: inherit;
+      outline: none;
+    }}
+    .search:focus {{
+      border-color: rgba(143, 146, 255, 0.45);
+      box-shadow: 0 0 0 3px rgba(143, 146, 255, 0.12);
     }}
     .chip-row {{
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
     }}
     .chip {{
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.035);
       color: var(--muted);
       border-radius: 999px;
-      padding: 10px 14px;
+      padding: 9px 12px;
       cursor: pointer;
       font: inherit;
       font-size: 12px;
+      transition: 0.18s ease;
+    }}
+    .chip:hover {{
+      color: var(--text);
+      border-color: rgba(255,255,255,0.18);
     }}
     .chip.active {{
       color: white;
-      border-color: rgba(77,163,255,0.5);
-      background: rgba(77,163,255,0.16);
+      border-color: rgba(143,146,255,0.48);
+      background: rgba(143,146,255,0.14);
     }}
     .table-shell {{
       overflow: hidden;
+      background: rgba(9, 10, 15, 0.72);
     }}
     .table-wrap {{
       overflow: auto;
-      max-height: 70vh;
+      max-height: 72vh;
     }}
     table {{
       width: 100%;
-      min-width: 1100px;
+      min-width: 980px;
       border-collapse: collapse;
     }}
     th, td {{
-      padding: 14px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 13px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.065);
       text-align: left;
       vertical-align: top;
-      font-size: 14px;
+      font-size: 13px;
     }}
     th {{
       position: sticky;
       top: 0;
       z-index: 2;
-      background: #12203d;
-      color: #d8e7ff;
+      background: rgba(15, 17, 24, 0.96);
+      color: #dfe1ff;
       cursor: pointer;
       user-select: none;
       white-space: nowrap;
+      backdrop-filter: blur(14px);
+      font-size: 12px;
+      font-weight: 600;
+    }}
+    tbody tr {{
+      transition: background 0.14s ease;
     }}
     tbody tr:hover {{
-      background: rgba(77,163,255,0.08);
+      background: rgba(143,146,255,0.075);
     }}
     .mono {{
       font-family: var(--mono);
-      font-size: 12px;
-      color: #d8e7ff;
+      font-size: 11px;
+      color: #d8dafe;
       word-break: break-all;
     }}
     .pill {{
       display: inline-block;
       min-width: 56px;
-      padding: 6px 10px;
+      padding: 5px 9px;
+      border: 1px solid rgba(100, 217, 138, 0.18);
       border-radius: 999px;
-      background: rgba(34, 197, 94, 0.14);
-      color: #98f0b0;
+      background: rgba(100, 217, 138, 0.105);
+      color: #b6f5c8;
       text-align: center;
-      font-size: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
     }}
     .muted {{
       color: var(--muted);
     }}
     .footer {{
-      margin-top: 18px;
-      color: var(--muted);
+      margin-top: 16px;
+      color: var(--muted-2);
       font-size: 12px;
       line-height: 1.7;
     }}
@@ -566,9 +687,11 @@ def build_html(payload: dict) -> str:
       .top-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
     @media (max-width: 760px) {{
-      .wrap {{ width: min(100vw - 20px, 1440px); padding-top: 14px; }}
-      .hero, .section {{ padding: 18px; border-radius: 22px; }}
+      .wrap {{ width: min(100vw - 20px, 1360px); padding-top: 12px; }}
+      .hero, .section {{ padding: 18px; border-radius: 20px; }}
+      h1 {{ font-size: clamp(34px, 12vw, 54px); }}
       .stat-grid, .top-grid {{ grid-template-columns: 1fr; }}
+      .alert {{ flex-direction: column; }}
       .bar-row {{ grid-template-columns: 24px 1fr; }}
       .bar-track, .bar-value {{ grid-column: 2; }}
     }}
