@@ -31,6 +31,61 @@ SCAN_TIERS = [
     },
 ]
 
+EXTRA_BUILD_META_KEYS = [
+    "generated_at_local",
+    "statistics_timezone",
+    "statistics_timezone_label",
+    "statistics_day_start_hour",
+    "statistics_window_start_timestamp",
+    "statistics_window_end_timestamp",
+    "statistics_window_start_local",
+    "statistics_window_end_local",
+    "statistics_window_label",
+    "statistics_day_label",
+    "statistics_window_start_day",
+    "statistics_window_end_day",
+    "statistics_window_active_address_basis",
+    "statistics_window_active_wallet_address_count",
+    "statistics_window_active_blocks_scanned",
+    "statistics_window_active_transactions_seen",
+    "statistics_window_active_start_block",
+    "statistics_window_active_end_block",
+    "statistics_window_new_candidate_address_count",
+    "statistics_window_new_candidate_address_basis",
+    "statistics_window_new_power",
+    "statistics_window_new_power_basis",
+    "statistics_window_start_total_power",
+    "statistics_window_end_total_power",
+    "today_local_date",
+    "emission_basis",
+    "emission_reference_timestamp",
+    "emission_genesis_timestamp",
+    "emission_current_cycle",
+    "emission_cycle_elapsed_days",
+    "emission_total_supply_cap_tokens",
+    "emission_total_supply_cap_display",
+    "emission_initial_cycle_output_tokens",
+    "emission_halving_period_days",
+    "emission_miner_share",
+    "emission_node_share",
+    "emission_cycle_output_tokens",
+    "emission_daily_total_tokens",
+    "emission_daily_total_display",
+    "emission_daily_miner_tokens",
+    "emission_daily_miner_display",
+    "emission_daily_node_tokens",
+    "emission_daily_node_display",
+    "power_required_per_mars_daily",
+    "power_required_per_mars_daily_display",
+]
+
+
+def add_extra_build_meta(summary: dict, meta: dict) -> dict:
+    for key in EXTRA_BUILD_META_KEYS:
+        if key in meta:
+            summary[key] = meta.get(key)
+    return summary
+
 
 def make_args(
     tx_pages: int,
@@ -189,7 +244,8 @@ def main() -> int:
     (latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     (latest_dir / "build-meta.json").write_text(
         json.dumps(
-            {
+            add_extra_build_meta(
+                {
                 "generated_at": chosen_meta["generated_at"],
                 "coverage": chosen_meta["discovered_power_coverage"],
                 "coverage_target": chosen_meta["coverage_target"],
@@ -229,7 +285,9 @@ def main() -> int:
                 "history_csv": str(csv_path),
                 "history_html": str(html_path),
                 "history_xlsx": str(xlsx_path),
-            },
+                },
+                chosen_meta,
+            ),
             ensure_ascii=False,
             indent=2,
         )
@@ -241,7 +299,7 @@ def main() -> int:
 
     write_site_bundle(site_dir, payload, csv_path, xlsx_path)
 
-    summary = {
+    summary = add_extra_build_meta({
         "generated_at": chosen_meta["generated_at"],
         "coverage": chosen_meta["discovered_power_coverage"],
         "coverage_target": chosen_meta["coverage_target"],
@@ -278,7 +336,7 @@ def main() -> int:
         "power_cache_stale_fallbacks": chosen_meta.get("power_cache_stale_fallbacks", 0),
         "tier_label": chosen_meta["tier_label"],
         "history_json": str(json_path),
-    }
+    }, chosen_meta)
     (site_dir / "build-meta.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
 
     print(

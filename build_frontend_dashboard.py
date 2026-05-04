@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import time
+from html import escape
 from pathlib import Path
 
 
@@ -77,15 +78,16 @@ def build_html(payload: dict) -> str:
     rpc_blocks_scanned = int(meta.get("rpc_blocks_scanned", 0) or 0)
     rpc_log_blocks_scanned = int(meta.get("rpc_log_blocks_scanned", 0) or 0)
     rpc_logs_seen = int(meta.get("rpc_logs_seen", 0) or 0)
-    subtitle = (
-        f"基于公开 explorer API、官方 RPC 与 POWER 合约日志生成，当前扫描覆盖率已达到 {threshold_label} 目标线。"
-        if target_met
-        else f"基于公开 explorer API、官方 RPC 与 POWER 合约日志生成，本轮扫描覆盖率暂未达到 {threshold_label} 目标线。"
-    )
+    statistics_window_label = meta.get("statistics_window_label") or "北京时间 08:00:00 至次日 08:00:00"
+    subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
-    generated_at = format_generated_at(int(meta["generated_at"]))
+    generated_at = meta.get("generated_at_local") or format_generated_at(int(meta["generated_at"]))
     analytics_head = build_analytics_head()
-    hero_meta_items = [f"生成时间：{generated_at}"]
+    hero_meta_items = [
+        f"最近刷新：{generated_at}",
+        f"统计周期：{statistics_window_label}",
+        "刷新频率：每 5 小时",
+    ]
     if int(meta.get("tx_pages", 0) or 0) > 0:
         hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
     if int(meta.get("block_pages", 0) or 0) > 0:
@@ -111,9 +113,8 @@ def build_html(payload: dict) -> str:
     risk_html = (
         '<div class="alert info">'
         '<strong>口径与风险</strong>'
-        '<span>本页不是 MarsChain 官方后台导出的排行榜，而是基于公开 explorer API、官方 RPC 与 POWER 合约日志生成的 best effort 看板。'
-        '全网总算力来自浏览器公开统计，候选钱包来自 POWER 合约日志，单地址算力来自公开地址接口。'
-        '如果公开 API 延迟、RPC 节点漏返回、合约日志解析口径变化或缓存 fallback，榜单可能与官方最终口径存在偏差。</span>'
+        f'<span>本榜单基于公开区块浏览器、官方 RPC 与 POWER 合约日志生成，统计周期为 {statistics_window_label}。'
+        '它是 best effort 数据看板，可能因公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，与官方后台存在差异。</span>'
         "</div>"
     )
     return f"""<!DOCTYPE html>
@@ -144,6 +145,14 @@ def build_html(payload: dict) -> str:
       --accent-2: #7dd3fc;
       --good: #64d98a;
       --warn: #f4c06a;
+      --glow: rgba(125, 211, 252, 0.72);
+      --glow-2: rgba(143, 146, 255, 0.86);
+      --glow-soft: rgba(125, 211, 252, 0.18);
+      --motion-fast: 180ms;
+      --motion-med: 320ms;
+      --motion-slow: 12s;
+      --hover-lift: -7px;
+      --sheen-opacity: 0.62;
       --shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
       --radius: 20px;
       --font: "Avenir Next", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
@@ -172,6 +181,21 @@ def build_html(payload: dict) -> str:
         linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
       background-size: 56px 56px;
       mask-image: linear-gradient(180deg, rgba(0,0,0,0.7), transparent 72%);
+      animation: grid-drift 24s linear infinite;
+    }}
+    body::after {{
+      content: "";
+      position: fixed;
+      inset: -35% -15% auto;
+      height: 70vh;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 22% 42%, rgba(125,211,252,0.16), transparent 34%),
+        radial-gradient(circle at 72% 18%, rgba(143,146,255,0.18), transparent 32%);
+      filter: blur(18px);
+      opacity: 0.78;
+      transform: translate3d(0, 0, 0);
+      animation: aurora-flow 18s ease-in-out infinite alternate;
     }}
     .wrap {{
       position: relative;
@@ -190,16 +214,20 @@ def build_html(payload: dict) -> str:
         linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025)),
         radial-gradient(circle at 80% 5%, rgba(143, 146, 255, 0.22), transparent 30%),
         rgba(10, 11, 16, 0.82);
-      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.08);
+      box-shadow: var(--shadow), 0 0 90px rgba(125,211,252,0.08), inset 0 1px 0 rgba(255,255,255,0.08);
       backdrop-filter: blur(20px);
     }}
     .hero::before {{
       content: "";
       position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-      opacity: 0.35;
+      inset: -1px;
+      background:
+        linear-gradient(112deg, transparent 0%, rgba(125,211,252,0.08) 28%, rgba(255,255,255,0.18) 48%, rgba(143,146,255,0.08) 64%, transparent 100%),
+        linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+      background-size: 240% 100%, 100% 100%;
+      opacity: 0.42;
       pointer-events: none;
+      animation: hero-sheen var(--motion-slow) ease-in-out infinite;
     }}
     .hero::after {{
       content: "";
@@ -212,6 +240,7 @@ def build_html(payload: dict) -> str:
       border: 1px solid rgba(255,255,255,0.08);
       background: radial-gradient(circle at center, rgba(143, 146, 255, 0.28), rgba(143, 146, 255, 0) 68%);
       pointer-events: none;
+      animation: pulse-orb 7s ease-in-out infinite;
     }}
     .eyebrow {{
       display: inline-flex;
@@ -226,6 +255,7 @@ def build_html(payload: dict) -> str:
       font-size: 11px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
+      box-shadow: 0 0 22px rgba(143,146,255,0.1);
     }}
     .eyebrow::before {{
       content: "";
@@ -234,6 +264,7 @@ def build_html(payload: dict) -> str:
       border-radius: 999px;
       background: var(--good);
       box-shadow: 0 0 18px rgba(100, 217, 138, 0.8);
+      animation: signal-pulse 2.4s ease-in-out infinite;
     }}
     .hero-grid {{
       position: relative;
@@ -271,6 +302,55 @@ def build_html(payload: dict) -> str:
       border-radius: 999px;
       background: rgba(255,255,255,0.035);
       font-family: var(--mono);
+      transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
+    }}
+    .hero-meta span:hover {{
+      transform: translateY(-2px);
+      border-color: rgba(125,211,252,0.32);
+      box-shadow: 0 0 26px rgba(125,211,252,0.08);
+    }}
+    .status-strip {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 18px;
+    }}
+    .status-item {{
+      min-height: 58px;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.035);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+      transition: transform var(--motion-med) ease, border-color var(--motion-med) ease, box-shadow var(--motion-med) ease;
+    }}
+    .status-item:hover {{
+      transform: translateY(-3px);
+      border-color: rgba(125,211,252,0.22);
+      box-shadow: 0 14px 38px rgba(0,0,0,0.24), 0 0 24px rgba(125,211,252,0.08), inset 0 1px 0 rgba(255,255,255,0.07);
+    }}
+    .status-item > span {{
+      display: block;
+      color: var(--muted-2);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }}
+    .status-item strong {{
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 7px;
+      color: #f4f6ff;
+      font-size: 13px;
+      line-height: 1.35;
+    }}
+    .status-dot {{
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--good);
+      box-shadow: 0 0 18px rgba(100, 217, 138, 0.8);
+      animation: signal-pulse 2.4s ease-in-out infinite;
     }}
     .coverage {{
       justify-self: end;
@@ -282,6 +362,12 @@ def build_html(payload: dict) -> str:
         linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)),
         rgba(7, 8, 13, 0.55);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+      transition: transform var(--motion-med) ease, border-color var(--motion-med) ease, box-shadow var(--motion-med) ease;
+    }}
+    .coverage:hover {{
+      transform: translateY(var(--hover-lift));
+      border-color: rgba(143,146,255,0.35);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.34), 0 0 42px rgba(143,146,255,0.12), inset 0 1px 0 rgba(255,255,255,0.1);
     }}
     .coverage-ring {{
       --pct: 0deg;
@@ -296,6 +382,7 @@ def build_html(payload: dict) -> str:
       place-items: center;
       position: relative;
       box-shadow: 0 0 50px rgba(143, 146, 255, 0.12);
+      animation: ring-breathe 4.8s ease-in-out infinite;
     }}
     .coverage-ring::before {{
       content: "";
@@ -362,11 +449,14 @@ def build_html(payload: dict) -> str:
       font-size: 12px;
     }}
     .stat-card, .section, .top-card, .table-shell {{
+      position: relative;
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: var(--surface);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
       backdrop-filter: blur(18px);
+      transform: translate3d(0, 0, 0);
     }}
     .stat-card {{
       min-height: 150px;
@@ -374,12 +464,34 @@ def build_html(payload: dict) -> str:
       background:
         linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.025)),
         rgba(13, 15, 22, 0.72);
-      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      transition:
+        transform var(--motion-med) cubic-bezier(.2,.8,.2,1),
+        border-color var(--motion-med) ease,
+        background var(--motion-med) ease,
+        box-shadow var(--motion-med) ease;
+    }}
+    .stat-card::before, .section::before, .table-shell::before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      background:
+        radial-gradient(circle at var(--spot-x, 78%) var(--spot-y, 0%), rgba(125,211,252,0.18), transparent 34%),
+        linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.12) 46%, transparent 58%);
+      background-size: 100% 100%, 240% 100%;
+      background-position: 0 0, 130% 0;
+      transition: opacity var(--motion-med) ease, background-position 720ms ease;
     }}
     .stat-card:hover {{
-      transform: translateY(-2px);
-      border-color: var(--line-strong);
-      background: rgba(18, 20, 30, 0.86);
+      transform: translateY(var(--hover-lift)) scale(1.012);
+      border-color: rgba(125,211,252,0.38);
+      background: rgba(18, 20, 30, 0.9);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.34), 0 0 36px rgba(125,211,252,0.13), inset 0 1px 0 rgba(255,255,255,0.09);
+    }}
+    .stat-card:hover::before, .section:hover::before, .table-shell:hover::before {{
+      opacity: var(--sheen-opacity);
+      background-position: 0 0, -80% 0;
     }}
     .stat-card .label-row {{
       display: flex;
@@ -402,6 +514,12 @@ def build_html(payload: dict) -> str:
       font-size: 10px;
       line-height: 1;
       cursor: help;
+      transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, color var(--motion-fast) ease;
+    }}
+    .info-dot:hover {{
+      color: white;
+      border-color: rgba(125,211,252,0.42);
+      box-shadow: 0 0 18px rgba(125,211,252,0.18);
     }}
     .stat-card .value {{
       font-size: clamp(22px, 2.2vw, 34px);
@@ -421,6 +539,12 @@ def build_html(payload: dict) -> str:
       background:
         linear-gradient(180deg, rgba(255,255,255,0.052), rgba(255,255,255,0.02)),
         rgba(11, 13, 20, 0.66);
+      transition: transform var(--motion-med) ease, border-color var(--motion-med) ease, box-shadow var(--motion-med) ease;
+    }}
+    .section:hover {{
+      transform: translateY(-4px);
+      border-color: rgba(143,146,255,0.24);
+      box-shadow: 0 22px 70px rgba(0,0,0,0.28), 0 0 36px rgba(143,146,255,0.1), inset 0 1px 0 rgba(255,255,255,0.08);
     }}
     .section-head {{
       display: flex;
@@ -456,6 +580,7 @@ def build_html(payload: dict) -> str:
       background:
         radial-gradient(circle at 100% 0%, rgba(143,146,255,0.14), transparent 42%),
         linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.024));
+      transition: transform var(--motion-med) cubic-bezier(.2,.8,.2,1), border-color var(--motion-med) ease, box-shadow var(--motion-med) ease;
     }}
     .top-card::before {{
       content: "";
@@ -463,6 +588,26 @@ def build_html(payload: dict) -> str:
       inset: 0 0 auto;
       height: 1px;
       background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+      animation: card-line-flow 5s linear infinite;
+    }}
+    .top-card::after {{
+      content: "";
+      position: absolute;
+      inset: -60% -30%;
+      pointer-events: none;
+      opacity: 0;
+      background: linear-gradient(115deg, transparent 35%, rgba(125,211,252,0.2) 48%, rgba(255,255,255,0.22) 50%, transparent 62%);
+      transform: translateX(-28%) rotate(6deg);
+      transition: opacity var(--motion-med) ease, transform 900ms ease;
+    }}
+    .top-card:hover {{
+      transform: translateY(var(--hover-lift)) scale(1.018);
+      border-color: rgba(125,211,252,0.4);
+      box-shadow: 0 22px 64px rgba(0,0,0,0.34), 0 0 34px rgba(125,211,252,0.13), inset 0 1px 0 rgba(255,255,255,0.1);
+    }}
+    .top-card:hover::after {{
+      opacity: 1;
+      transform: translateX(34%) rotate(6deg);
     }}
     .top-rank {{
       color: var(--accent-2);
@@ -503,10 +648,12 @@ def build_html(payload: dict) -> str:
       padding: 8px 10px;
       border: 1px solid transparent;
       border-radius: 12px;
+      transition: transform var(--motion-fast) ease, border-color var(--motion-fast) ease, background var(--motion-fast) ease;
     }}
     .bar-row:hover {{
-      border-color: rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.03);
+      transform: translateX(5px);
+      border-color: rgba(125,211,252,0.18);
+      background: rgba(125,211,252,0.045);
     }}
     .bar-rank {{
       color: var(--muted-2);
@@ -533,8 +680,17 @@ def build_html(payload: dict) -> str:
       inset: 0 auto 0 0;
       width: 0%;
       border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      box-shadow: 0 0 22px rgba(143,146,255,0.35);
+      overflow: hidden;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2), #a7f3d0);
+      box-shadow: 0 0 22px rgba(143,146,255,0.35), 0 0 18px rgba(125,211,252,0.18);
+    }}
+    .bar-fill::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.76), transparent);
+      transform: translateX(-100%);
+      animation: bar-scan 2.7s ease-in-out infinite;
     }}
     .bar-value {{
       text-align: right;
@@ -559,20 +715,61 @@ def build_html(payload: dict) -> str:
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
       min-height: 38px;
       padding: 0 13px;
       border-radius: 11px;
       border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.045);
+      background:
+        linear-gradient(rgba(255,255,255,0.055), rgba(255,255,255,0.03)) padding-box,
+        linear-gradient(120deg, rgba(125,211,252,0.28), rgba(143,146,255,0.2), rgba(255,255,255,0.08)) border-box;
       color: var(--text);
       text-decoration: none;
       font-size: 12px;
-      transition: 0.18s ease;
+      box-shadow: 0 0 0 rgba(125,211,252,0);
+      transition: transform var(--motion-fast) ease, border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, color var(--motion-fast) ease;
+    }}
+    .action-btn::before, .chip::before {{
+      content: "";
+      position: absolute;
+      inset: -2px;
+      z-index: -1;
+      opacity: 0;
+      background: linear-gradient(115deg, transparent 24%, rgba(125,211,252,0.32), rgba(255,255,255,0.26), rgba(143,146,255,0.28), transparent 76%);
+      transform: translateX(-70%);
+      transition: opacity var(--motion-fast) ease, transform 720ms ease;
+    }}
+    .action-btn::after {{
+      content: "";
+      position: absolute;
+      inset: 1px;
+      z-index: -1;
+      border-radius: 10px;
+      background: radial-gradient(circle at 50% 0%, rgba(125,211,252,0.16), transparent 55%);
+      opacity: 0;
+      transition: opacity var(--motion-fast) ease;
     }}
     .action-btn:hover {{
-      transform: translateY(-1px);
-      border-color: rgba(143, 146, 255, 0.4);
-      background: rgba(143, 146, 255, 0.12);
+      transform: translateY(-4px);
+      border-color: rgba(125, 211, 252, 0.48);
+      box-shadow: 0 16px 38px rgba(0,0,0,0.3), 0 0 26px rgba(125,211,252,0.16);
+    }}
+    .action-btn:hover::before, .chip:hover::before, .chip.active::before {{
+      opacity: 1;
+      transform: translateX(70%);
+    }}
+    .action-btn:hover::after {{
+      opacity: 1;
+    }}
+    .action-btn:active, .chip:active {{
+      transform: translateY(-1px) scale(0.985);
+    }}
+    .action-btn:focus-visible, .chip:focus-visible, .search:focus-visible {{
+      outline: none;
+      border-color: rgba(125,211,252,0.68);
+      box-shadow: 0 0 0 3px rgba(125,211,252,0.16), 0 0 34px rgba(125,211,252,0.18);
     }}
     .search {{
       flex: 1 1 360px;
@@ -584,10 +781,12 @@ def build_html(payload: dict) -> str:
       color: var(--text);
       font: inherit;
       outline: none;
+      transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background var(--motion-fast) ease;
     }}
     .search:focus {{
-      border-color: rgba(143, 146, 255, 0.45);
-      box-shadow: 0 0 0 3px rgba(143, 146, 255, 0.12);
+      border-color: rgba(125, 211, 252, 0.55);
+      background: rgba(9, 12, 20, 0.82);
+      box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.12), 0 0 32px rgba(125,211,252,0.1);
     }}
     .chip-row {{
       display: flex;
@@ -595,6 +794,9 @@ def build_html(payload: dict) -> str:
       gap: 7px;
     }}
     .chip {{
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
       border: 1px solid rgba(255,255,255,0.1);
       background: rgba(255,255,255,0.035);
       color: var(--muted);
@@ -603,20 +805,28 @@ def build_html(payload: dict) -> str:
       cursor: pointer;
       font: inherit;
       font-size: 12px;
-      transition: 0.18s ease;
+      transition: transform var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background var(--motion-fast) ease;
     }}
     .chip:hover {{
+      transform: translateY(-2px);
       color: var(--text);
-      border-color: rgba(255,255,255,0.18);
+      border-color: rgba(125,211,252,0.34);
+      box-shadow: 0 12px 26px rgba(0,0,0,0.24), 0 0 18px rgba(125,211,252,0.08);
     }}
     .chip.active {{
       color: white;
-      border-color: rgba(143,146,255,0.48);
-      background: rgba(143,146,255,0.14);
+      border-color: rgba(125,211,252,0.52);
+      background: rgba(143,146,255,0.16);
+      box-shadow: 0 0 24px rgba(143,146,255,0.14), inset 0 1px 0 rgba(255,255,255,0.08);
     }}
     .table-shell {{
       overflow: hidden;
       background: rgba(9, 10, 15, 0.72);
+      transition: border-color var(--motion-med) ease, box-shadow var(--motion-med) ease;
+    }}
+    .table-shell:hover {{
+      border-color: rgba(125,211,252,0.22);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.28), 0 0 34px rgba(125,211,252,0.08), inset 0 1px 0 rgba(255,255,255,0.07);
     }}
     .table-wrap {{
       overflow: auto;
@@ -646,11 +856,17 @@ def build_html(payload: dict) -> str:
       backdrop-filter: blur(14px);
       font-size: 12px;
       font-weight: 600;
+      transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
+    }}
+    th:hover {{
+      color: white;
+      background: rgba(24, 28, 42, 0.98);
     }}
     tbody tr {{
-      transition: background 0.14s ease;
+      transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
     }}
     tbody tr:hover {{
+      transform: translateX(3px);
       background: rgba(143,146,255,0.075);
     }}
     .mono {{
@@ -670,6 +886,42 @@ def build_html(payload: dict) -> str:
       text-align: center;
       font-family: var(--mono);
       font-size: 11px;
+      box-shadow: 0 0 18px rgba(100,217,138,0.08);
+    }}
+    @keyframes grid-drift {{
+      from {{ background-position: 0 0, 0 0; }}
+      to {{ background-position: 56px 56px, 56px 56px; }}
+    }}
+    @keyframes aurora-flow {{
+      0% {{ transform: translate3d(-2%, -1%, 0) scale(1); opacity: 0.6; }}
+      50% {{ transform: translate3d(3%, 2%, 0) scale(1.06); opacity: 0.86; }}
+      100% {{ transform: translate3d(-1%, 3%, 0) scale(1.02); opacity: 0.72; }}
+    }}
+    @keyframes hero-sheen {{
+      0%, 100% {{ background-position: 160% 0, 0 0; }}
+      45%, 55% {{ background-position: -80% 0, 0 0; }}
+    }}
+    @keyframes pulse-orb {{
+      0%, 100% {{ transform: scale(1); opacity: 0.72; }}
+      50% {{ transform: scale(1.08); opacity: 0.96; }}
+    }}
+    @keyframes signal-pulse {{
+      0%, 100% {{ box-shadow: 0 0 14px rgba(100,217,138,0.62); }}
+      50% {{ box-shadow: 0 0 26px rgba(100,217,138,0.95), 0 0 44px rgba(100,217,138,0.18); }}
+    }}
+    @keyframes ring-breathe {{
+      0%, 100% {{ box-shadow: 0 0 42px rgba(143,146,255,0.12); }}
+      50% {{ box-shadow: 0 0 66px rgba(143,146,255,0.22), 0 0 32px rgba(125,211,252,0.12); }}
+    }}
+    @keyframes card-line-flow {{
+      from {{ background-position: -180px 0; }}
+      to {{ background-position: 180px 0; }}
+    }}
+    @keyframes bar-scan {{
+      0% {{ transform: translateX(-100%); opacity: 0; }}
+      32% {{ opacity: 1; }}
+      68% {{ opacity: 1; }}
+      100% {{ transform: translateX(130%); opacity: 0; }}
     }}
     .muted {{
       color: var(--muted);
@@ -691,9 +943,21 @@ def build_html(payload: dict) -> str:
       .hero, .section {{ padding: 18px; border-radius: 20px; }}
       h1 {{ font-size: clamp(34px, 12vw, 54px); }}
       .stat-grid, .top-grid {{ grid-template-columns: 1fr; }}
+      .status-strip {{ grid-template-columns: 1fr; }}
       .alert {{ flex-direction: column; }}
       .bar-row {{ grid-template-columns: 24px 1fr; }}
       .bar-track, .bar-value {{ grid-column: 2; }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      *, *::before, *::after {{
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+      }}
+      .stat-card:hover, .top-card:hover, .section:hover, .coverage:hover, .action-btn:hover, .chip:hover, tbody tr:hover, .bar-row:hover {{
+        transform: none !important;
+      }}
     }}
   </style>
 </head>
@@ -707,6 +971,20 @@ def build_html(payload: dict) -> str:
           <p class="subtitle">{subtitle}</p>
           <div class="hero-meta">
 {hero_meta_html}
+          </div>
+          <div class="status-strip">
+            <div class="status-item">
+              <span>数据状态</span>
+              <strong><i class="status-dot"></i><span id="dataLoadStatus">数据加载中</span></strong>
+            </div>
+            <div class="status-item">
+              <span>最近刷新</span>
+              <strong>{generated_at}</strong>
+            </div>
+            <div class="status-item">
+              <span>统计周期</span>
+              <strong>{statistics_window_label}</strong>
+            </div>
           </div>
           <div class="action-row">
             <a class="action-btn" href="./downloads/latest.csv" download data-track="download_csv" data-label="latest.csv">下载 CSV</a>
@@ -735,8 +1013,8 @@ def build_html(payload: dict) -> str:
     <section class="section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">头部地址概览</h2>
-          <div class="section-note">先看头部集中度，再看完整榜单。这个区块更适合做快速判断，不用一下子扎进长表。</div>
+          <h2 class="section-title">头部算力地址</h2>
+          <div class="section-note">展示当前已发现正算力地址的头部集中度，首页默认压缩地址显示，明细表保留完整地址方便核验。</div>
         </div>
       </div>
       <div class="top-grid" id="topGrid"></div>
@@ -746,7 +1024,7 @@ def build_html(payload: dict) -> str:
       <div class="section-head">
         <div>
           <h2 class="section-title">前 15 名横向分布</h2>
-          <div class="section-note">用横向条形图看头部断层最直观。这里按当前榜单默认排序展示。</div>
+          <div class="section-note">按当前算力排序展示头部地址断层，快速判断头部集中度变化。</div>
         </div>
       </div>
       <div class="bar-list" id="barList"></div>
@@ -756,7 +1034,7 @@ def build_html(payload: dict) -> str:
       <div class="section-head">
         <div>
           <h2 class="section-title">榜单明细（前 100）</h2>
-          <div class="section-note">支持搜索地址、快速筛选和列排序。页面展示前 100 名，统计卡片中的候选钱包和正算力钱包为本轮全量扫描口径。</div>
+          <div class="section-note">支持搜索地址、快速筛选和列排序。页面展示前 100 名，候选钱包和正算力钱包为本轮扫描口径。</div>
         </div>
       </div>
       <div class="toolbar">
@@ -832,18 +1110,19 @@ def build_html(payload: dict) -> str:
     let searchTrackTimer = null;
     let lastTrackedQuery = '';
 
-    const formatUnits = (raw) => {{
+    const formatChineseAmount = (raw, decimals = 3) => {{
       raw = Number(raw || 0);
-      if (raw >= 1e12) return (raw / 1e12).toFixed(2) + 'T';
-      if (raw >= 1e9) return (raw / 1e9).toFixed(2) + 'B';
-      if (raw >= 1e6) return (raw / 1e6).toFixed(2) + 'M';
-      if (raw >= 1e3) return (raw / 1e3).toFixed(2) + 'K';
-      return String(raw);
+      if (raw >= 1e12) return (raw / 1e12).toFixed(decimals) + '万亿';
+      if (raw >= 1e8) return (raw / 1e8).toFixed(decimals) + '亿';
+      if (raw >= 1e4) return (raw / 1e4).toFixed(decimals) + '万';
+      return Number.isInteger(raw) ? String(raw) : raw.toFixed(decimals);
     }};
+    const formatUnits = (raw) => formatChineseAmount(raw);
     const formatCoverage = (value) => (value * 100).toFixed(2) + '%';
     const formatGeneratedAt = (ts) => new Date(ts * 1000).toLocaleString('zh-CN', {{ hour12: false }});
-    const formatCount = (value) => Number(value || 0).toLocaleString();
+    const formatCount = (value) => formatChineseAmount(value, 3);
     const formatMaybeUnits = (value) => (value === null || value === undefined) ? '—' : formatUnits(value);
+    const displayAddress = (address) => address ? `${{address.slice(0, 8)}}...${{address.slice(-6)}}` : '—';
     const escapeAttr = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
     function renderHero() {{
@@ -871,6 +1150,31 @@ def build_html(payload: dict) -> str:
           help: '已发现总算力 ÷ 全网总算力。它不是官方完整率，只代表公开数据下的扫描覆盖程度。'
         }},
         {{
+          label: '总产量',
+          value: meta.emission_total_supply_cap_display || '2000亿',
+          help: '官网经济模型口径：总量 2000 亿枚，永不增发。'
+        }},
+        {{
+          label: '每日总产币量',
+          value: meta.emission_daily_total_display || '2.232亿/日',
+          help: '按官网半衰期公式计算：当前周期产量 ÷ 448 天。'
+        }},
+        {{
+          label: '矿工日产币量',
+          value: meta.emission_daily_miner_display || '1.674亿/日',
+          help: '官网规则产量分配为矿工 75%、节点 25%，这里展示矿工侧每日产出。'
+        }},
+        {{
+          label: '节点日产币量',
+          value: meta.emission_daily_node_display || '0.558亿/日',
+          help: '官网规则产量分配为矿工 75%、节点 25%，这里展示节点侧每日产出。'
+        }},
+        {{
+          label: '单币日需算力',
+          value: meta.power_required_per_mars_daily_display || '—',
+          help: '全网总算力 ÷ 矿工日产币量，表示每天产出 1 枚 MARS 所需的估算算力。'
+        }},
+        {{
           label: '全链地址总数',
           value: formatCount(meta.explorer_total_addresses),
           help: '浏览器统计的链上地址总数，包含不一定参与算力系统的地址。',
@@ -887,14 +1191,14 @@ def build_html(payload: dict) -> str:
           help: '候选钱包里当前 power > 0 的地址数量，也就是实际进入榜单计算的地址。'
         }},
         {{
-          label: `链上今日新增钱包${{meta.today_utc_date ? ' · ' + meta.today_utc_date + ' UTC' : ''}}`,
-          value: meta.today_new_wallet_count === null || meta.today_new_wallet_count === undefined ? '—' : formatCount(meta.today_new_wallet_count),
-          help: '按链上 UTC 日统计：今天第一次出现在 POWER 合约日志里的候选钱包地址数。'
+          label: `统计日活跃钱包地址${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
+          value: meta.statistics_window_active_wallet_address_count === null || meta.statistics_window_active_wallet_address_count === undefined ? '—' : formatCount(meta.statistics_window_active_wallet_address_count),
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：交易发送方和接收方钱包地址去重数；这是活跃地址口径，不等同于官方新增用户数。`
         }},
         {{
-          label: `链上今日新增总算力${{meta.today_utc_date ? ' · ' + meta.today_utc_date + ' UTC' : ''}}`,
+          label: `统计日新增总算力${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: formatMaybeUnits(meta.today_new_power),
-          help: '按链上 UTC 日统计：当前全网总算力减去上一 UTC 日合约日历史总算力。'
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
         }},
         {{
           label: '前 100 名总算力',
@@ -928,8 +1232,8 @@ def build_html(payload: dict) -> str:
         return `
         <article class="top-card">
           <div class="top-rank">第 ${{row.rank}} 名</div>
-          <div class="top-power">${{row.power_display}}</div>
-          <div class="top-address">${{row.address}}</div>
+          <div class="top-power">${{formatUnits(row.power_num)}}</div>
+          <div class="top-address" title="${{row.address}}">${{displayAddress(row.address)}}</div>
           <div class="top-sub">${{parts.join(' | ')}}</div>
         </article>
       `;
@@ -942,9 +1246,9 @@ def build_html(payload: dict) -> str:
       document.getElementById('barList').innerHTML = list.map((row) => `
         <div class="bar-row">
           <div class="bar-rank">${{row.rank}}</div>
-          <div class="bar-label" title="${{row.address}}">${{row.address}}</div>
+          <div class="bar-label" title="${{row.address}}">${{displayAddress(row.address)}}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${{(row.power_num / maxPower) * 100}}%"></div></div>
-          <div class="bar-value">${{row.power_display}}</div>
+          <div class="bar-value">${{formatUnits(row.power_num)}}</div>
         </div>
       `).join('');
     }}
@@ -961,7 +1265,7 @@ def build_html(payload: dict) -> str:
       const chips = [
         ['all', '全部'],
         ['top20', '前 20 名'],
-        ['over10b', '≥ 10B']
+        ['over10b', '≥ 100亿']
       ];
       if (rows.some((row) => row.upline1 || row.upline2)) chips.push(['withUpline', '有上级']);
       if (rows.some((row) => row.tx_seen_num >= 10)) chips.push(['activeTx', '高频交易']);
@@ -1025,7 +1329,7 @@ def build_html(payload: dict) -> str:
       const cells = {{
         rank: row.rank,
         address: `<span class="mono">${{row.address}}</span>`,
-        power: `<span class="pill">${{row.power_display}}</span>`,
+        power: `<span class="pill">${{formatUnits(row.power_num)}}</span>`,
         total_burned_amount: row.total_burned_amount_display,
         tx_seen: row.tx_seen,
         log_seen: row.log_seen || 0,
@@ -1073,9 +1377,12 @@ def build_html(payload: dict) -> str:
 
       document.getElementById('footerText').textContent =
         `当前显示 ${{list.length}} / ${{rows.length}} 行。最近更新时间：${{formatGeneratedAt(meta.generated_at)}}。` +
+        `统计周期：${{meta.statistics_window_label || '北京时间 08:00 至次日 08:00'}}。` +
         `本轮覆盖率 ${{formatCoverage(meta.discovered_power_coverage)}}，目标阈值 ${{formatCoverage(coverageTarget)}}，` +
         `${{targetMet ? '已达标' : '未达标'}}。说明：候选钱包 ${{formatCount(meta.candidate_count)}} 个，正算力钱包 ${{formatCount(meta.positive_power_count)}} 个；` +
         `这是一份基于公开 explorer API、官方 RPC 和合约日志生成的 best effort 榜单，不是官方后端直接导出的全量榜。`;
+      const loadStatus = document.getElementById('dataLoadStatus');
+      if (loadStatus) loadStatus.textContent = '数据已加载';
     }}
 
     function bindEvents() {{
@@ -1108,6 +1415,850 @@ def build_html(payload: dict) -> str:
     renderTable();
     bindEvents();
   </script>
+</body>
+</html>
+"""
+
+
+SCROLL_DASHBOARD_CSS = r"""
+:root {
+  --bg: #030612;
+  --bg2: #071124;
+  --panel: rgba(9, 16, 31, 0.68);
+  --panel2: rgba(14, 24, 46, 0.86);
+  --line: rgba(125, 225, 255, 0.16);
+  --line2: rgba(125, 225, 255, 0.32);
+  --text: #f7fbff;
+  --muted: #91a2bd;
+  --muted2: #64728b;
+  --cyan: #52efff;
+  --blue: #7c88ff;
+  --green: #75f3a9;
+  --amber: #ffd37e;
+  --pink: #ff79c7;
+  --font: "Avenir Next", "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "SFMono-Regular", "JetBrains Mono", monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--bg); color: var(--text); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  background:
+    radial-gradient(circle at 20% 7%, rgba(82,239,255,.18), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(124,136,255,.22), transparent 29%),
+    linear-gradient(180deg, #030612, #071124 48%, #030612);
+  overflow-x: hidden;
+}
+body:before {
+  content: "";
+  position: fixed;
+  inset: -12%;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(125,225,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125,225,255,.05) 1px, transparent 1px);
+  background-size: 76px 76px;
+  transform: perspective(760px) rotateX(61deg) translateY(-150px);
+  animation: grid 18s linear infinite;
+  opacity: .72;
+}
+body:after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(620px circle at var(--mx,50%) var(--my,20%), rgba(82,239,255,.14), transparent 42%),
+    radial-gradient(760px circle at calc(100% - var(--mx,50%)) 18%, rgba(124,136,255,.11), transparent 46%);
+  mix-blend-mode: screen;
+  opacity: .86;
+  transition: opacity .3s ease;
+}
+@keyframes grid { to { background-position: 0 76px, 76px 0; } }
+.scroll-progress {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 80;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--blue), var(--pink));
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left center;
+  box-shadow: 0 0 24px rgba(82,239,255,.75);
+}
+.shell { position: relative; z-index: 1; width: min(1440px, calc(100vw - 44px)); margin: 0 auto; }
+.topbar {
+  position: sticky;
+  top: 14px;
+  z-index: 20;
+  margin: 14px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid rgba(125,225,255,.12);
+  border-radius: 999px;
+  background: rgba(5,10,22,.58);
+  backdrop-filter: blur(18px);
+  padding: 10px 12px 10px 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.28);
+}
+.topbar:after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, transparent, rgba(82,239,255,.45), rgba(124,136,255,.36), transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: .42;
+  pointer-events: none;
+  animation: borderFlow 7s linear infinite;
+}
+.brand { display: flex; gap: 11px; align-items: center; font-weight: 900; }
+.mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
+  background: conic-gradient(from 210deg, var(--cyan), var(--blue), var(--pink), var(--cyan));
+  box-shadow: 0 0 30px rgba(82,239,255,.4);
+  animation: markSpin 10s linear infinite;
+}
+.nav { display: flex; gap: 8px; }
+.nav a {
+  text-decoration: none;
+  color: #adbad1;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 850;
+  transition: transform .24s ease, color .24s ease, border-color .24s ease, background .24s ease, box-shadow .24s ease;
+}
+.nav a:hover {
+  color: white;
+  border-color: var(--line2);
+  background: rgba(82,239,255,.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(82,239,255,.12);
+}
+.hero {
+  position: relative;
+  min-height: calc(100vh - 72px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 520px;
+  gap: 46px;
+  align-items: center;
+  padding: 46px 0 74px;
+}
+.hero:before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -8%;
+  top: 8%;
+  width: 44vw;
+  height: 44vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(82,239,255,.15), rgba(82,239,255,.04) 38%, transparent 64%);
+  filter: blur(4px);
+  animation: orbDrift 13s ease-in-out infinite;
+}
+.hero-copy { position: relative; }
+.chip {
+  display: inline-flex;
+  border: 1px solid rgba(82,239,255,.28);
+  background: rgba(82,239,255,.08);
+  color: #b7f8ff;
+  border-radius: 999px;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+h1 {
+  font-size: clamp(64px, 7.4vw, 112px);
+  line-height: .86;
+  letter-spacing: -.078em;
+  margin: 24px 0 18px;
+  background: linear-gradient(110deg, #fff 0%, #dff8ff 30%, #8ef7ff 46%, #ffffff 58%, #b8c1ff 78%, #fff 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 20px 70px rgba(82,239,255,.18);
+  animation: titleShine 8s ease-in-out infinite;
+}
+.lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+.btn {
+  height: 50px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line2);
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255,255,255,.055);
+  font-weight: 950;
+  color: #eef7ff;
+  text-decoration: none;
+}
+.btn.hot {
+  border: 0;
+  color: #03111a;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+  background-size: 220% 100%;
+  box-shadow: 0 18px 48px rgba(82,239,255,.24);
+  animation: buttonFlow 5.5s ease-in-out infinite;
+}
+.chip, .btn, .track span, .metric, .fcard, .rank-card, .panel, .command { isolation: isolate; }
+.chip, .btn {
+  position: relative;
+  overflow: hidden;
+  transition: transform .28s cubic-bezier(.2,.85,.2,1), border-color .28s ease, box-shadow .28s ease, background .28s ease;
+}
+.chip:before, .btn:before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(110deg, transparent 0 30%, rgba(255,255,255,.55) 48%, transparent 66%);
+  transform: translateX(-120%);
+  opacity: .55;
+  pointer-events: none;
+}
+.chip:hover:before, .btn:hover:before { animation: sheenPass 1.05s ease; }
+.btn:hover, .chip:hover {
+  transform: translateY(-3px);
+  border-color: rgba(82,239,255,.62);
+  box-shadow: 0 18px 44px rgba(82,239,255,.18), inset 0 1px 0 rgba(255,255,255,.14);
+}
+.btn:active { transform: translateY(1px) scale(.985); }
+.scroll-hint { margin-top: 56px; display: flex; align-items: center; gap: 12px; color: #73839c; font-size: 13px; }
+.mouse { width: 26px; height: 42px; border: 1px solid var(--line2); border-radius: 999px; position: relative; }
+.mouse:after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 4px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--cyan);
+  transform: translateX(-50%);
+  animation: wheel 1.5s ease infinite;
+}
+@keyframes wheel { to { top: 22px; opacity: 0; } }
+.command {
+  position: relative;
+  min-height: 560px;
+  border: 1px solid var(--line);
+  border-radius: 34px;
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025)), rgba(7,13,27,.74);
+  box-shadow: 0 28px 100px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.08);
+  overflow: hidden;
+  backdrop-filter: blur(22px);
+}
+.command:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0 44%, rgba(82,239,255,.10) 50%, transparent 58%);
+  animation: scanLight 7s ease-in-out infinite;
+}
+.command:after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(82,239,255,.13);
+  box-shadow: inset 0 0 40px rgba(82,239,255,.06);
+  pointer-events: none;
+}
+@keyframes scanLight { 0%,35% { transform: translateX(-70%); opacity: 0; } 58% { opacity: 1; } 100% { transform: translateX(70%); opacity: 0; } }
+.radar {
+  position: absolute;
+  inset: 36px;
+  border: 1px solid rgba(125,225,255,.14);
+  border-radius: 28px;
+  background: radial-gradient(circle at center, rgba(82,239,255,.16), rgba(82,239,255,.035) 46%, transparent);
+}
+.radar:before {
+  content: "";
+  position: absolute;
+  inset: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(82,239,255,.22);
+  box-shadow: 0 0 0 58px rgba(82,239,255,.035), 0 0 0 120px rgba(124,136,255,.032);
+}
+.radar:after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 47%;
+  height: 2px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--cyan), transparent);
+  filter: drop-shadow(0 0 12px var(--cyan));
+  animation: radar 5.4s linear infinite;
+}
+@keyframes radar { to { transform: rotate(360deg); } from { transform: rotate(0deg); } }
+.core { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); text-align: center; }
+.core b { font-size: 58px; letter-spacing: -.07em; }
+.core span { display: block; color: #a0f8c4; font-size: 12px; font-weight: 950; }
+.node { position: absolute; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 24px currentColor; animation: float 4s ease-in-out infinite; }
+.n1 { left: 22%; top: 31%; color: var(--cyan); }
+.n2 { right: 23%; top: 26%; color: var(--blue); }
+.n3 { right: 18%; bottom: 27%; color: var(--green); }
+@keyframes float { 50% { transform: translateY(-8px) scale(1.18); } }
+.mini { position: absolute; left: 28px; right: 28px; bottom: 28px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.mini div { border: 1px solid var(--line); border-radius: 18px; background: rgba(4,9,20,.64); padding: 14px; }
+.mini span { display: block; color: #8e9db7; font-size: 12px; }
+.mini b { font-size: 24px; letter-spacing: -.03em; }
+.marquee {
+  position: sticky;
+  top: 76px;
+  z-index: 15;
+  margin-top: -52px;
+  height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(10,18,34,.76);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 18px 48px rgba(0,0,0,.24);
+}
+.track { display: flex; gap: 14px; white-space: nowrap; animation: slide 34s linear infinite; }
+.marquee:hover .track { animation-play-state: paused; }
+.track span {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(125,225,255,.16);
+  background: rgba(255,255,255,.045);
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: #9badc8;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .06em;
+}
+.track b { color: white; font-family: var(--mono); letter-spacing: 0; }
+@keyframes slide { to { transform: translateX(-50%); } }
+.section { position: relative; padding: 118px 0; }
+.section:before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 10%;
+  width: 58vw;
+  height: 58vw;
+  transform: translateX(-50%);
+  z-index: -1;
+  background: radial-gradient(circle, rgba(124,136,255,.09), transparent 62%);
+  filter: blur(12px);
+  opacity: .7;
+  pointer-events: none;
+}
+.section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; }
+.kicker { color: #9cf6ff; font-weight: 950; letter-spacing: .12em; font-size: 12px; text-transform: uppercase; }
+h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.065em; margin: 10px 0 0; }
+.section-head p { max-width: 470px; color: #9dafc9; line-height: 1.65; margin: 0; }
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background: rgba(8,15,30,.72);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 70px rgba(0,0,0,.28);
+}
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.metric {
+  min-height: 160px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(30,46,76,.9), rgba(8,15,30,.92));
+  position: relative;
+  overflow: hidden;
+}
+.metric:after {
+  content: "";
+  position: absolute;
+  right: -32px;
+  top: -32px;
+  width: 102px;
+  height: 102px;
+  border-radius: 50%;
+  background: rgba(82,239,255,.11);
+}
+.metric span { color: #aebbd2; font-size: 13px; }
+.metric b { display: block; font-size: 34px; margin-top: 24px; letter-spacing: -.055em; }
+.metric small { display: block; color: #8292ad; font-size: 12px; margin-top: 12px; }
+.funnel { display: grid; grid-template-columns: 1fr 72px 1fr 72px 1fr; align-items: center; gap: 12px; }
+.fcard { min-height: 230px; padding: 24px; border: 1px solid var(--line); border-radius: 26px; background: rgba(14,24,46,.82); }
+.fcard label { display: flex; justify-content: space-between; color: #abb9d0; font-weight: 950; }
+.fcard strong { display: block; font-size: 56px; letter-spacing: -.065em; margin: 42px 0 10px; }
+.fcard small { display: block; color: #8292ad; line-height: 1.55; }
+.arrow { height: 2px; background: linear-gradient(90deg, var(--cyan), transparent); position: relative; overflow: hidden; }
+.arrow:after { content: ""; position: absolute; right: 0; top: -4px; border-left: 8px solid var(--cyan); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.arrow:before { content: ""; position: absolute; inset: -8px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: arrowEnergy 2.4s ease-in-out infinite; }
+.rank-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.rank-card { min-height: 142px; padding: 18px; border: 1px solid var(--line); border-radius: 22px; background: rgba(14,24,46,.82); }
+.rank-top { display: flex; justify-content: space-between; align-items: center; }
+.rank-top em { font-style: normal; font-family: var(--mono); color: #cbd8ef; }
+.rank-top strong { font-size: 24px; }
+.rank-card code { display: block; margin: 18px 0 14px; color: #dfe8ff; font-family: var(--mono); }
+.rank-bar { display: block; height: 8px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--blue)); box-shadow: 0 0 18px rgba(82,239,255,.36); position: relative; overflow: hidden; }
+.rank-bar i:after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.78), transparent); transform: translateX(-120%); animation: barPulse 2.8s ease-in-out infinite; }
+.telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.timeline { padding: 24px; }
+.line { display: flex; justify-content: space-between; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.line:last-child { border-bottom: 0; }
+.line span { color: #aebbd1; }
+.line b { font-family: var(--mono); text-align: right; }
+.risk { padding: 24px; }
+.risk h3 { font-size: 26px; margin: 0 0 14px; }
+.risk p { color: #aab8d0; line-height: 1.85; margin: 0; }
+.alert {
+  margin-top: 18px;
+  padding: 15px 17px;
+  border: 1px solid rgba(255,211,126,.28);
+  border-radius: 20px;
+  background: rgba(255,211,126,.08);
+  color: #ffe4ad;
+  line-height: 1.65;
+}
+.footer { padding: 70px 0 54px; color: #6f7e96; text-align: center; font-size: 13px; }
+.metric, .fcard, .rank-card, .panel, .command {
+  position: relative;
+  transition: transform .34s cubic-bezier(.2,.85,.2,1), box-shadow .34s ease, border-color .34s ease, background .34s ease;
+  transform-style: preserve-3d;
+}
+.metric:before, .fcard:before, .rank-card:before, .panel:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(460px circle at var(--spotX,50%) var(--spotY,0%), rgba(82,239,255,.20), transparent 45%), linear-gradient(115deg, transparent 30%, rgba(255,255,255,.13), transparent 62%);
+  opacity: 0;
+  transition: opacity .28s ease;
+  pointer-events: none;
+}
+.metric:hover, .fcard:hover, .rank-card:hover, .panel:hover {
+  transform: perspective(900px) rotateX(var(--tiltX,0deg)) rotateY(var(--tiltY,0deg)) translateY(-8px);
+  border-color: rgba(82,239,255,.48);
+  box-shadow: 0 26px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(82,239,255,.16), 0 0 48px rgba(82,239,255,.12);
+}
+.metric:hover:before, .fcard:hover:before, .rank-card:hover:before, .panel:hover:before { opacity: 1; }
+.command:hover {
+  transform: perspective(900px) rotateX(var(--tiltX,0deg)) rotateY(var(--tiltY,0deg)) translateY(-6px);
+  border-color: rgba(82,239,255,.48);
+  box-shadow: 0 34px 110px rgba(0,0,0,.5), 0 0 80px rgba(82,239,255,.14), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.reveal {
+  opacity: 0;
+  transform: translateY(34px);
+  transition: opacity .75s ease, transform .75s cubic-bezier(.2,.85,.2,1);
+  transition-delay: var(--delay, 0ms);
+}
+.reveal.visible { opacity: 1; transform: none; }
+.stagger > * { opacity: 0; transform: translateY(26px); transition: .7s ease; transition-delay: var(--delay, 0ms); }
+.stagger.visible > * { opacity: 1; transform: none; }
+@keyframes titleShine { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes buttonFlow { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes sheenPass { to { transform: translateX(120%); } }
+@keyframes barPulse { 0%,35% { transform: translateX(-120%); opacity: 0; } 50% { opacity: .9; } 82%,100% { transform: translateX(120%); opacity: 0; } }
+@keyframes arrowEnergy { 0% { transform: translateX(-120%); opacity: 0; } 45% { opacity: .85; } 100% { transform: translateX(120%); opacity: 0; } }
+@keyframes orbDrift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(8%,7%,0) scale(1.08); } }
+@keyframes borderFlow { to { filter: hue-rotate(360deg); } }
+@keyframes markSpin { to { filter: hue-rotate(360deg); transform: rotate(360deg); } }
+@media (max-width: 1120px) {
+  .hero, .telemetry { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .rank-grid { grid-template-columns: repeat(2, 1fr); }
+  .funnel { grid-template-columns: 1fr; }
+  .arrow { height: 36px; width: 2px; justify-self: center; background: linear-gradient(180deg, var(--cyan), transparent); }
+  .arrow:after { right: -4px; top: auto; bottom: 0; transform: rotate(90deg); }
+}
+@media (max-width: 720px) {
+  .shell { width: calc(100vw - 24px); }
+  .topbar { position: relative; top: 0; align-items: flex-start; border-radius: 24px; flex-direction: column; }
+  .nav { flex-wrap: wrap; }
+  .hero { min-height: auto; padding-top: 34px; grid-template-columns: 1fr; }
+  h1 { font-size: 50px; }
+  .command { min-height: 430px; }
+  .metrics, .rank-grid { grid-template-columns: 1fr; }
+  .section-head { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+"""
+
+
+SCROLL_DASHBOARD_JS = r"""
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) entry.target.classList.add('visible');
+  });
+}, { threshold: .16 });
+
+document.querySelectorAll('.reveal,.stagger').forEach((el) => io.observe(el));
+
+const root = document.documentElement;
+const setProgress = () => {
+  const max = Math.max(1, root.scrollHeight - window.innerHeight);
+  root.style.setProperty('--scroll', String(window.scrollY || 0));
+  root.style.setProperty('--progress', Math.min(1, (window.scrollY || 0) / max).toFixed(4));
+};
+setProgress();
+window.addEventListener('scroll', setProgress, { passive: true });
+window.addEventListener('pointermove', (event) => {
+  root.style.setProperty('--mx', `${event.clientX}px`);
+  root.style.setProperty('--my', `${event.clientY}px`);
+}, { passive: true });
+
+document.querySelectorAll('.metric,.fcard,.rank-card,.panel,.command').forEach((el) => {
+  el.addEventListener('pointermove', (event) => {
+    const rect = el.getBoundingClientRect();
+    const px = (event.clientX - rect.left) / rect.width;
+    const py = (event.clientY - rect.top) / rect.height;
+    el.style.setProperty('--spotX', `${px * 100}%`);
+    el.style.setProperty('--spotY', `${py * 100}%`);
+    el.style.setProperty('--tiltX', `${(0.5 - py) * 7}deg`);
+    el.style.setProperty('--tiltY', `${(px - 0.5) * 8}deg`);
+  }, { passive: true });
+  el.addEventListener('pointerleave', () => {
+    el.style.setProperty('--tiltX', '0deg');
+    el.style.setProperty('--tiltY', '0deg');
+    el.style.setProperty('--spotX', '50%');
+    el.style.setProperty('--spotY', '0%');
+  }, { passive: true });
+});
+
+document.querySelectorAll('[data-track]').forEach((node) => {
+  node.addEventListener('click', () => {
+    window._hmt = window._hmt || [];
+    window._hmt.push(['_trackEvent', 'marschain', node.dataset.track || 'click', node.dataset.label || '']);
+    if (window.clarity) window.clarity('event', node.dataset.track || 'click');
+  });
+});
+"""
+
+
+def _as_float(value: object, default: float = 0.0) -> float:
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    try:
+        if value is None or value == "":
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _fmt_decimal(value: object, digits: int = 3) -> str:
+    return f"{_as_float(value):,.{digits}f}"
+
+
+def _fmt_chinese_number(value: object, digits: int = 3, fallback: str = "待刷新") -> str:
+    if value is None or value == "":
+        return fallback
+    number = _as_float(value)
+    sign = "-" if number < 0 else ""
+    number = abs(number)
+    if number >= 1_0000_0000_0000:
+        return f"{sign}{number / 1_0000_0000_0000:.{digits}f}万亿"
+    if number >= 1_0000_0000:
+        return f"{sign}{number / 1_0000_0000:.{digits}f}亿"
+    if number >= 1_0000:
+        return f"{sign}{number / 1_0000:.{digits}f}万"
+    return f"{sign}{number:,.0f}"
+
+
+def _fmt_power(value: object) -> str:
+    return _fmt_chinese_number(value, digits=3)
+
+
+def _fmt_percent(value: object) -> str:
+    number = _as_float(value)
+    if abs(number) <= 1:
+        number *= 100
+    return f"{number:.3f}%"
+
+
+def _safe_text(value: object, fallback: str = "待刷新") -> str:
+    if value is None or value == "":
+        return fallback
+    return escape(str(value))
+
+
+def _short_address(address: object) -> str:
+    raw = str(address or "")
+    if len(raw) <= 16:
+        return escape(raw)
+    return escape(f"{raw[:8]}...{raw[-6:]}")
+
+
+def _format_generated_at_from_meta(meta: dict) -> str:
+    if meta.get("generated_at_local"):
+        return str(meta["generated_at_local"])
+    return format_generated_at(_as_int(meta.get("generated_at"), int(time.time())))
+
+
+def _build_metric_cards(items: list[tuple[str, str, str]]) -> str:
+    cards = []
+    for index, (label, value, note) in enumerate(items):
+        cards.append(
+            '<article class="metric" style="--delay:%sms">'
+            "<span>%s</span><b>%s</b><small>%s</small></article>"
+            % (index * 70, escape(label), escape(value), escape(note))
+        )
+    return "\n".join(cards)
+
+
+def _build_rank_cards(rows: list[dict]) -> str:
+    top_rows = rows[:8]
+    max_power = max([_as_float(row.get("power")) for row in top_rows] or [1.0]) or 1.0
+    cards: list[str] = []
+    for index, row in enumerate(top_rows):
+        power = _as_float(row.get("power"))
+        width = max(4.0, min(100.0, (power / max_power) * 100))
+        cards.append(
+            '<article class="rank-card reveal" style="--delay:%sms">'
+            '<div class="rank-top"><em>%02d</em><strong>%s</strong></div>'
+            "<code>%s</code>"
+            '<span class="rank-bar"><i style="width:%.3f%%"></i></span>'
+            "</article>"
+            % (
+                (index + 1) * 55,
+                index + 1,
+                escape(_fmt_power(power)),
+                _short_address(row.get("address")),
+                width,
+            )
+        )
+    return "\n".join(cards)
+
+
+def _build_timeline(items: list[tuple[str, str]]) -> str:
+    return "\n".join(
+        '<div class="line"><span>%s</span><b>%s</b></div>' % (escape(label), escape(value))
+        for label, value in items
+    )
+
+
+def _build_marquee(items: list[tuple[str, str]]) -> str:
+    doubled = items + items
+    return "".join("<span>%s<b>%s</b></span>" % (escape(label), escape(value)) for label, value in doubled)
+
+
+def _build_warning(meta: dict, threshold_label: str) -> str:
+    coverage = _as_float(meta.get("discovered_power_coverage"))
+    target_met = bool(meta.get("target_met", coverage >= _as_float(meta.get("coverage_target"), 0.8)))
+    if target_met:
+        return ""
+    return (
+        '<div class="alert">'
+        f"本轮覆盖率为 {_fmt_percent(coverage)}，低于目标 {escape(threshold_label)}。"
+        "页面仍发布当轮最佳扫描结果，请结合风险说明理解数据边界。"
+        "</div>"
+    )
+
+
+def build_html(payload: dict) -> str:  # type: ignore[no-redef]
+    """Render the new continuous-scroll MarsChain site."""
+    meta = payload.get("meta", {})
+    rows = payload.get("rows", [])
+    title = "MarsChain 算力排行榜"
+    subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
+    analytics_head = build_analytics_head()
+
+    generated_at = _format_generated_at_from_meta(meta)
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
+    coverage = _as_float(meta.get("discovered_power_coverage"))
+    coverage_label = _fmt_percent(coverage)
+    coverage_target = _as_float(meta.get("coverage_target"), 0.8)
+    threshold_label = _fmt_percent(coverage_target)
+
+    network_total_power = meta.get("network_total_power")
+    discovered_total_power = _as_float(meta.get("discovered_total_power"))
+    uncovered_power = max(0.0, _as_float(network_total_power) - discovered_total_power)
+    candidate_count = meta.get("candidate_count")
+    positive_power_count = meta.get("positive_power_count")
+    explorer_total_addresses = meta.get("explorer_total_addresses")
+    active_wallet_count = meta.get("statistics_window_active_wallet_address_count")
+    if active_wallet_count is None:
+        active_wallet_count = meta.get("today_new_wallet_count")
+    new_power = meta.get("statistics_window_new_power")
+    if new_power is None:
+        new_power = meta.get("today_new_power")
+    positive_ratio = 0.0
+    if _as_float(candidate_count) > 0:
+        positive_ratio = _as_float(positive_power_count) / _as_float(candidate_count)
+
+    total_supply = str(meta.get("emission_total_supply_cap_display") or "2000亿")
+    daily_total = str(meta.get("emission_daily_total_display") or "待刷新")
+    daily_miner = str(meta.get("emission_daily_miner_display") or "待刷新")
+    daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
+    power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
+
+    metric_items = [
+        ("全网总算力", _fmt_power(network_total_power), "区块浏览器公开统计"),
+        ("总产量", total_supply, "官网口径：永不增发"),
+        ("每日产币量", daily_total, "官方经济模型口径"),
+        ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模"),
+        ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0"),
+        ("统计日活跃钱包地址", _fmt_chinese_number(active_wallet_count), "北京时间 08:00 至次日 08:00"),
+        ("统计日新增总算力", _fmt_power(new_power), "同一统计日口径"),
+        ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
+    ]
+    marquee_items = [
+        ("覆盖率", coverage_label),
+        ("总产量", total_supply),
+        ("每日产币量", daily_total),
+        ("最新区块", f"{_as_int(meta.get('latest_block')) or _as_int(meta.get('rpc_log_end_block')):,}"),
+        ("算力日志", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
+        ("候选地址", _fmt_chinese_number(candidate_count)),
+        ("正算力地址", _fmt_chinese_number(positive_power_count)),
+        ("统计日新增算力", _fmt_power(new_power)),
+        ("单币日需算力", power_per_coin),
+        ("缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
+    ]
+    timeline_items = [
+        ("最近刷新", generated_at),
+        ("统计周期", statistics_window_label),
+        ("刷新频率", "每 5 小时"),
+        ("全网总算力", _fmt_power(network_total_power)),
+        ("矿工日产币量", daily_miner),
+        ("节点日产币量", daily_node),
+        ("单币日需算力", power_per_coin),
+        ("合约日志命中", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
+        ("算力缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
+        ("覆盖目标线", threshold_label),
+    ]
+
+    warning_html = _build_warning(meta, threshold_label)
+    metric_cards = _build_metric_cards(metric_items)
+    rank_cards = _build_rank_cards(rows)
+    timeline_rows = _build_timeline(timeline_items)
+    marquee_html = _build_marquee(marquee_items)
+    embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
+
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{escape(title)}</title>
+  <meta name="description" content="{escape(subtitle)}">
+  <meta name="theme-color" content="#030612">
+{analytics_head}
+  <style>{SCROLL_DASHBOARD_CSS}</style>
+</head>
+<body>
+<div class="scroll-progress" aria-hidden="true"></div>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><span class="mark"></span>MarsChain Rank</div>
+    <nav class="nav">
+      <a href="#pulse">实时脉冲</a>
+      <a href="#wallets">地址口径</a>
+      <a href="#rank">排行雷达</a>
+      <a href="#risk">风险说明</a>
+    </nav>
+  </header>
+  <section class="hero">
+    <div class="hero-copy reveal visible">
+      <span class="chip">数据已加载 · 每 5 小时刷新</span>
+      <h1>MarsChain<br>算力指挥舱</h1>
+      <p class="lead">{escape(subtitle)}第一屏只给核心判断，继续下滑时，新增、地址口径、排行和风险说明依次展开。</p>
+      <div class="hero-actions">
+        <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
+        <span class="btn">总产量 {escape(total_supply)}</span>
+        <span class="btn">每日产币 {escape(daily_total)}</span>
+        <span class="btn">活跃地址 {_fmt_chinese_number(active_wallet_count)}</span>
+        <span class="btn">新增算力 {_fmt_power(new_power)}</span>
+        <span class="btn">单币日需算力 {escape(power_per_coin)}</span>
+        <a class="btn" href="downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
+        <a class="btn" href="downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
+      </div>
+      {warning_html}
+      <div class="scroll-hint"><span class="mouse"></span><span>向下滑动查看完整数据链路</span></div>
+    </div>
+    <aside class="command reveal visible">
+      <div class="radar">
+        <div class="core"><b>{escape(coverage_label)}</b><span>扫描覆盖率</span></div>
+        <i class="node n1"></i><i class="node n2"></i><i class="node n3"></i>
+        <div class="mini">
+          <div><span>候选地址</span><b>{_fmt_chinese_number(candidate_count)}</b></div>
+          <div><span>正算力占比</span><b>{_fmt_percent(positive_ratio)}</b></div>
+          <div><span>未覆盖算力</span><b>{_fmt_power(uncovered_power)}</b></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+  <div class="marquee"><div class="track">{marquee_html}</div></div>
+  <section id="pulse" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">01 / 实时脉冲</span><h2>核心脉冲，先看结果</h2></div>
+      <p>把所有“必须第一眼知道”的指标集中，其余技术细节不挤占主屏。</p>
+    </div>
+    <div class="metrics stagger">{metric_cards}</div>
+  </section>
+  <section id="wallets" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">02 / 地址路径</span><h2>地址口径，滑动解释</h2></div>
+      <p>用一个漏斗讲清楚总钱包、候选地址、正算力地址之间的关系。</p>
+    </div>
+    <div class="funnel reveal">
+      <article class="fcard"><label>总钱包数量<span>公开地址</span></label><strong>{_fmt_chinese_number(explorer_total_addresses)}</strong><small>公开返回的地址规模，不等于都参与挖矿或有算力。</small></article>
+      <div class="arrow"></div>
+      <article class="fcard"><label>候选地址<span>合约日志</span></label><strong>{_fmt_chinese_number(candidate_count)}</strong><small>从 POWER 合约日志发现，需要逐个查询当前算力。</small></article>
+      <div class="arrow"></div>
+      <article class="fcard"><label>正算力地址<span>算力 &gt; 0</span></label><strong>{_fmt_chinese_number(positive_power_count)}</strong><small>候选地址中当前存在正算力的钱包。</small></article>
+    </div>
+  </section>
+  <section id="rank" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">03 / 排行雷达</span><h2>排行雷达，降低表格压迫感</h2></div>
+      <p>首页只展示头部梯队。完整表格与下载文件继续保留，但第一眼不再是密密麻麻地址。</p>
+    </div>
+    <div class="rank-grid">{rank_cards}</div>
+  </section>
+  <section id="risk" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">04 / 扫描遥测</span><h2>扫描过程和风险提示</h2></div>
+      <p>准确度说明独立成段，保证可信但不干扰前面的浏览体验。</p>
+    </div>
+    <div class="telemetry">
+      <div class="timeline panel reveal">{timeline_rows}</div>
+      <article class="risk panel reveal">
+        <h3>公开口径说明</h3>
+        <p>榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：{escape(total_supply)} 枚永不增发；每日产币量按官方公式与当前链龄计算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。</p>
+      </article>
+    </div>
+  </section>
+  <footer class="footer">基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
+</div>
+<script id="rankData" type="application/json">{embedded_payload}</script>
+<script>{SCROLL_DASHBOARD_JS}</script>
 </body>
 </html>
 """

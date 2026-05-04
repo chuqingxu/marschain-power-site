@@ -14,6 +14,7 @@ import argparse
 import concurrent.futures
 import csv
 import json
+import math
 import sys
 import time
 import urllib.error
@@ -30,6 +31,13 @@ DEFAULT_RPC_URL = "https://rpcs.marschain.net"
 POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
 GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR = "0x1c1b5cdf"
 DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
+BEIJING_OFFSET_SECONDS = 8 * 60 * 60
+STATISTICS_DAY_START_HOUR = 8
+MARS_TOTAL_SUPPLY_CAP_TOKENS = 200_000_000_000
+MARS_INITIAL_CYCLE_OUTPUT_TOKENS = 100_000_000_000
+MARS_HALVING_PERIOD_DAYS = 448
+MARS_MINER_SHARE = 0.75
+MARS_NODE_SHARE = 0.25
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json, text/plain, */*",
@@ -214,6 +222,98 @@ def fetch_daily_total_power_history(rpc_url: str) -> tuple[list[int], list[int]]
     return days, powers
 
 
+def format_beijing_datetime(timestamp: int) -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(timestamp + BEIJING_OFFSET_SECONDS))
+
+
+def format_beijing_date(timestamp: int) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(timestamp + BEIJING_OFFSET_SECONDS))
+
+
+def build_statistics_window_meta(reference_timestamp: int) -> dict[str, Any]:
+    # Beijing 08:00 is UTC 00:00. Use the latest completed window so the site never shows a future end time.
+    end_timestamp = (reference_timestamp // 86_400) * 86_400
+    start_timestamp = max(0, end_timestamp - 86_400)
+    start_local = format_beijing_datetime(start_timestamp)
+    end_local = format_beijing_datetime(end_timestamp)
+    return {
+        "statistics_timezone": "Asia/Shanghai",
+        "statistics_timezone_label": "北京时间",
+        "statistics_day_start_hour": STATISTICS_DAY_START_HOUR,
+        "statistics_window_start_timestamp": start_timestamp,
+        "statistics_window_end_timestamp": end_timestamp,
+        "statistics_window_start_local": start_local,
+        "statistics_window_end_local": end_local,
+        "statistics_window_label": f"{start_local} 至 {end_local}",
+        "statistics_day_label": format_beijing_date(start_timestamp),
+    }
+
+
+def format_chinese_amount(value: float, decimals: int = 3) -> str:
+    if value >= 1e12:
+        return f"{value / 1e12:.{decimals}f}万亿"
+    if value >= 1e8:
+        return f"{value / 1e8:.{decimals}f}亿"
+    if value >= 1e4:
+        return f"{value / 1e4:.{decimals}f}万"
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:.{decimals}f}"
+
+
+def format_yi_tokens(value: float, decimals: int = 3) -> str:
+    return f"{value / 1e8:.{decimals}f}亿"
+
+
+def build_mars_emission_meta(
+    rpc_url: str,
+    reference_timestamp: int,
+    network_total_power: int,
+) -> dict[str, Any]:
+    genesis_timestamp: int | None = None
+    emission_error: str | None = None
+    try:
+        genesis_timestamp = get_block_timestamp(rpc_url, 0)
+    except Exception as exc:  # pragma: no cover - public RPC variability
+        emission_error = str(exc)
+
+    elapsed_days = 0
+    if genesis_timestamp is not None and reference_timestamp >= genesis_timestamp:
+        elapsed_days = max(0, (reference_timestamp - genesis_timestamp) // 86_400)
+    current_cycle = int(elapsed_days // MARS_HALVING_PERIOD_DAYS) + 1
+    cycle_output_tokens = MARS_INITIAL_CYCLE_OUTPUT_TOKENS * math.pow(0.5, current_cycle - 1)
+    daily_total_tokens = cycle_output_tokens / MARS_HALVING_PERIOD_DAYS
+    daily_miner_tokens = daily_total_tokens * MARS_MINER_SHARE
+    daily_node_tokens = daily_total_tokens * MARS_NODE_SHARE
+    power_required = network_total_power / daily_miner_tokens if daily_miner_tokens and network_total_power else None
+
+    meta = {
+        "emission_basis": "MarsChain official model: total supply 2000亿, halving every 448 days, miner 75%, node 25%",
+        "emission_reference_timestamp": reference_timestamp,
+        "emission_genesis_timestamp": genesis_timestamp,
+        "emission_current_cycle": current_cycle,
+        "emission_cycle_elapsed_days": int(elapsed_days % MARS_HALVING_PERIOD_DAYS),
+        "emission_total_supply_cap_tokens": MARS_TOTAL_SUPPLY_CAP_TOKENS,
+        "emission_total_supply_cap_display": "2000亿",
+        "emission_initial_cycle_output_tokens": MARS_INITIAL_CYCLE_OUTPUT_TOKENS,
+        "emission_halving_period_days": MARS_HALVING_PERIOD_DAYS,
+        "emission_miner_share": MARS_MINER_SHARE,
+        "emission_node_share": MARS_NODE_SHARE,
+        "emission_cycle_output_tokens": cycle_output_tokens,
+        "emission_daily_total_tokens": daily_total_tokens,
+        "emission_daily_total_display": f"{format_yi_tokens(daily_total_tokens)}/日",
+        "emission_daily_miner_tokens": daily_miner_tokens,
+        "emission_daily_miner_display": f"{format_yi_tokens(daily_miner_tokens)}/日",
+        "emission_daily_node_tokens": daily_node_tokens,
+        "emission_daily_node_display": f"{format_yi_tokens(daily_node_tokens)}/日",
+        "power_required_per_mars_daily": power_required,
+        "power_required_per_mars_daily_display": format_chinese_amount(power_required) if power_required is not None else None,
+    }
+    if emission_error:
+        meta["emission_error"] = emission_error
+    return meta
+
+
 def normalize_address(value: str | None) -> str | None:
     if not value or not isinstance(value, str):
         return None
@@ -260,15 +360,7 @@ def hex_to_int(value: str | int | None) -> int | None:
 
 
 def format_units(raw: int) -> str:
-    if raw >= 10**12:
-        return f"{raw / 10**12:.2f}T"
-    if raw >= 10**9:
-        return f"{raw / 10**9:.2f}B"
-    if raw >= 10**6:
-        return f"{raw / 10**6:.2f}M"
-    if raw >= 10**3:
-        return f"{raw / 10**3:.2f}K"
-    return str(raw)
+    return format_chinese_amount(raw)
 
 
 def format_token(raw: int) -> str:
@@ -485,6 +577,130 @@ def collect_rpc_block_candidates(
     return tx_counter, miner_counter, meta
 
 
+def collect_statistics_window_active_addresses(
+    rpc_url: str,
+    latest_block: int | None,
+    start_timestamp: int,
+    end_timestamp: int,
+    rpc_batch_size: int,
+    rpc_workers: int,
+    progress: bool,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "statistics_window_active_address_basis": "unique transaction sender/receiver wallet addresses in the latest completed Beijing 08:00 statistics day",
+        "statistics_window_active_wallet_address_count": None,
+        "statistics_window_active_blocks_scanned": 0,
+        "statistics_window_active_transactions_seen": 0,
+        "statistics_window_active_error_count": 0,
+    }
+    if not rpc_url:
+        meta["statistics_window_active_error"] = "missing rpc url"
+        return meta
+
+    try:
+        if latest_block is None:
+            latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
+        if latest_block is None:
+            raise RuntimeError("eth_blockNumber returned an invalid value")
+        start_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, start_timestamp)
+        end_marker_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, end_timestamp)
+    except Exception as exc:
+        meta["statistics_window_active_error"] = str(exc)
+        print(f"[warn] statistics window active address lookup failed: {exc}", file=sys.stderr)
+        return meta
+
+    if start_block is None:
+        meta["statistics_window_active_error"] = "window start block not found"
+        return meta
+    if end_marker_block is None:
+        end_marker_block = latest_block + 1
+
+    low_block = start_block
+    high_block = min(latest_block, end_marker_block - 1)
+    meta.update(
+        {
+            "statistics_window_active_start_block": low_block,
+            "statistics_window_active_end_block": high_block,
+            "statistics_window_active_end_marker_block": end_marker_block,
+        }
+    )
+    if high_block < low_block:
+        meta["statistics_window_active_wallet_address_count"] = 0
+        return meta
+
+    batch_size = max(1, min(rpc_batch_size, 200))
+    batches: list[list[int]] = []
+    current = high_block
+    while current >= low_block:
+        end = max(low_block, current - batch_size + 1)
+        batches.append(list(range(current, end - 1, -1)))
+        current = end - 1
+
+    def fetch_batch(numbers: list[int]) -> tuple[set[str], int, int]:
+        payload = [
+            {
+                "jsonrpc": "2.0",
+                "id": number,
+                "method": "eth_getBlockByNumber",
+                "params": [hex(number), True],
+            }
+            for number in numbers
+        ]
+        parsed = rpc_json(rpc_url, payload)
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Unexpected RPC batch response: {type(parsed).__name__}")
+
+        local_addresses: set[str] = set()
+        scanned = 0
+        tx_seen = 0
+        for item in parsed:
+            if not isinstance(item, dict) or item.get("error"):
+                continue
+            block = item.get("result")
+            if not isinstance(block, dict):
+                continue
+            scanned += 1
+            for tx in block.get("transactions", []):
+                if not isinstance(tx, dict):
+                    continue
+                tx_seen += 1
+                sender = normalize_address(tx.get("from"))
+                if is_probably_user_address(sender):
+                    local_addresses.add(sender)
+                receiver = normalize_address(tx.get("to"))
+                if is_probably_user_address(receiver):
+                    local_addresses.add(receiver)
+        return local_addresses, scanned, tx_seen
+
+    active_addresses: set[str] = set()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_workers, 12))) as pool:
+        future_map = {pool.submit(fetch_batch, batch): batch for batch in batches}
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            block_range = future_map[future]
+            try:
+                batch_addresses, scanned, tx_seen = future.result()
+            except Exception as exc:
+                meta["statistics_window_active_error_count"] += 1
+                if meta["statistics_window_active_error_count"] <= 10:
+                    print(
+                        f"[warn] statistics window active block batch {block_range[-1]}-{block_range[0]} failed: {exc}",
+                        file=sys.stderr,
+                    )
+                continue
+            active_addresses.update(batch_addresses)
+            meta["statistics_window_active_blocks_scanned"] += scanned
+            meta["statistics_window_active_transactions_seen"] += tx_seen
+            if progress and idx % 50 == 0:
+                print(
+                    f"[info] statistics window active scan: {idx}/{len(batches)} batches, "
+                    f"{meta['statistics_window_active_blocks_scanned']} blocks",
+                    file=sys.stderr,
+                )
+
+    meta["statistics_window_active_wallet_address_count"] = len(active_addresses)
+    return meta
+
+
 def collect_rpc_log_candidates(
     rpc_url: str,
     rpc_log_blocks: int,
@@ -517,20 +733,31 @@ def collect_rpc_log_candidates(
         return log_counter, meta
 
     latest_timestamp = get_block_timestamp(rpc_url, latest_block)
-    today_start_timestamp: int | None = None
-    today_start_block: int | None = None
+    statistics_window_start_timestamp: int | None = None
+    statistics_window_end_timestamp: int | None = None
+    statistics_window_start_block: int | None = None
+    statistics_window_end_block: int | None = None
     if latest_timestamp is not None:
-        today_start_timestamp = (latest_timestamp // 86_400) * 86_400
+        statistics_window_meta = build_statistics_window_meta(latest_timestamp)
+        statistics_window_start_timestamp = statistics_window_meta["statistics_window_start_timestamp"]
+        statistics_window_end_timestamp = statistics_window_meta["statistics_window_end_timestamp"]
         try:
-            today_start_block = find_first_block_at_or_after_timestamp(
+            statistics_window_start_block = find_first_block_at_or_after_timestamp(
                 rpc_url,
                 0,
                 latest_block,
-                today_start_timestamp,
+                statistics_window_start_timestamp,
+            )
+            statistics_window_end_block = find_first_block_at_or_after_timestamp(
+                rpc_url,
+                0,
+                latest_block,
+                statistics_window_end_timestamp,
             )
         except Exception as exc:
-            meta["rpc_log_today_error"] = str(exc)
-            today_start_block = None
+            meta["rpc_log_statistics_window_error"] = str(exc)
+            statistics_window_start_block = None
+            statistics_window_end_block = None
 
     high_block = latest_block if rpc_log_start_block is None else min(rpc_log_start_block, latest_block)
     low_block = max(0, high_block - rpc_log_blocks + 1)
@@ -543,8 +770,12 @@ def collect_rpc_log_candidates(
             "rpc_log_end_block": low_block,
             "rpc_log_blocks_effective": effective_blocks,
             "rpc_log_latest_timestamp": latest_timestamp,
-            "rpc_log_today_start_timestamp": today_start_timestamp,
-            "rpc_log_today_start_block": today_start_block,
+            "rpc_log_statistics_window_start_timestamp": statistics_window_start_timestamp,
+            "rpc_log_statistics_window_end_timestamp": statistics_window_end_timestamp,
+            "rpc_log_statistics_window_start_block": statistics_window_start_block,
+            "rpc_log_statistics_window_end_block": statistics_window_end_block,
+            "rpc_log_today_start_timestamp": statistics_window_start_timestamp,
+            "rpc_log_today_start_block": statistics_window_start_block,
             "rpc_log_chunk_size": chunk_size,
             "rpc_log_workers": rpc_log_workers,
         }
@@ -622,13 +853,17 @@ def collect_rpc_log_candidates(
 
     meta["rpc_log_addresses_seen"] = len(log_counter)
     meta["rpc_log_first_seen_tracked"] = len(first_seen_block)
-    if today_start_block is not None:
-        meta["today_new_wallet_count"] = sum(
-            1 for block_number in first_seen_block.values() if block_number >= today_start_block
+    if statistics_window_start_block is not None and statistics_window_end_block is not None:
+        meta["statistics_window_new_candidate_address_count"] = sum(
+            1
+            for block_number in first_seen_block.values()
+            if statistics_window_start_block <= block_number < statistics_window_end_block
         )
     else:
-        meta["today_new_wallet_count"] = None
-    meta["today_new_wallet_basis"] = "first POWER-contract log on current UTC chain day"
+        meta["statistics_window_new_candidate_address_count"] = None
+    meta["statistics_window_new_candidate_address_basis"] = "first POWER-contract log in the latest completed Beijing 08:00 statistics day"
+    meta["today_new_wallet_count"] = meta["statistics_window_new_candidate_address_count"]
+    meta["today_new_wallet_basis"] = meta["statistics_window_new_candidate_address_basis"]
     return log_counter, meta
 
 
@@ -1303,33 +1538,56 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     network_total_power = int(power_stats.get("totalPower", "0") or 0)
     network_total_burned_tokens = int(power_stats.get("totalBurnedTokens", "0") or 0)
     explorer_total_addresses = int(network_stats.get("totalAddresses", 0) or 0) if isinstance(network_stats, dict) else 0
+    statistics_reference_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
+    if not isinstance(statistics_reference_timestamp, int):
+        statistics_reference_timestamp = int(time.time())
+    statistics_window_meta = build_statistics_window_meta(statistics_reference_timestamp)
+    emission_meta = build_mars_emission_meta(args.rpc_url, statistics_reference_timestamp, network_total_power)
+    statistics_window_active_meta = collect_statistics_window_active_addresses(
+        args.rpc_url,
+        rpc_log_meta.get("rpc_log_latest_block") if rpc_log_meta else None,
+        statistics_window_meta["statistics_window_start_timestamp"],
+        statistics_window_meta["statistics_window_end_timestamp"],
+        args.rpc_batch_size,
+        args.rpc_workers,
+        args.progress,
+    )
 
     daily_power_history_days = 0
+    statistics_window_start_day = None
+    statistics_window_end_day = None
     today_chain_day = None
     today_utc_date = None
+    today_local_date = statistics_window_meta["statistics_day_label"]
     today_new_power = None
-    previous_total_power = None
+    statistics_window_start_total_power = None
+    statistics_window_end_total_power = None
     try:
         history_days, history_powers = fetch_daily_total_power_history(args.rpc_url)
         daily_power_history_days = len(history_days)
         history_map = dict(zip(history_days, history_powers))
-        latest_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
-        if isinstance(latest_timestamp, int):
-            today_chain_day = latest_timestamp // 86_400
-        elif history_days:
-            today_chain_day = max(history_days)
-        if today_chain_day is not None:
-            today_utc_date = time.strftime("%Y-%m-%d", time.gmtime(today_chain_day * 86_400))
-            previous_days = [day for day in history_days if day < today_chain_day]
+        statistics_window_start_day = int(statistics_window_meta["statistics_window_start_timestamp"] // 86_400)
+        statistics_window_end_day = int(statistics_window_meta["statistics_window_end_timestamp"] // 86_400)
+        today_chain_day = statistics_window_start_day
+        today_utc_date = time.strftime("%Y-%m-%d", time.gmtime(statistics_window_start_day * 86_400))
+        statistics_window_start_total_power = history_map.get(statistics_window_start_day)
+        if statistics_window_start_total_power is None:
+            previous_days = [day for day in history_days if day < statistics_window_start_day]
             if previous_days:
-                previous_total_power = history_map[max(previous_days)]
-                today_new_power = max(0, network_total_power - previous_total_power)
+                statistics_window_start_total_power = history_map[max(previous_days)]
+        statistics_window_end_total_power = history_map.get(statistics_window_end_day)
+        if statistics_window_end_total_power is None:
+            statistics_window_end_total_power = network_total_power
+        if statistics_window_start_total_power is not None and statistics_window_end_total_power is not None:
+            today_new_power = max(0, statistics_window_end_total_power - statistics_window_start_total_power)
     except Exception as exc:
         print(f"[warn] daily total power history lookup failed: {exc}", file=sys.stderr)
 
     discovered_total_power = sum(row.power for row in all_rows)
+    generated_at = int(time.time())
     meta = {
-        "generated_at": int(time.time()),
+        "generated_at": generated_at,
+        "generated_at_local": format_beijing_datetime(generated_at),
         "base_url": BASE_URL,
         "ranking_type": "best_effort_discovered_addresses",
         "tx_pages": args.tx_pages,
@@ -1359,14 +1617,30 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "rpc_log_latest_timestamp": rpc_log_meta.get("rpc_log_latest_timestamp"),
         "rpc_log_today_start_timestamp": rpc_log_meta.get("rpc_log_today_start_timestamp"),
         "rpc_log_today_start_block": rpc_log_meta.get("rpc_log_today_start_block"),
+        "rpc_log_statistics_window_start_timestamp": rpc_log_meta.get("rpc_log_statistics_window_start_timestamp"),
+        "rpc_log_statistics_window_end_timestamp": rpc_log_meta.get("rpc_log_statistics_window_end_timestamp"),
+        "rpc_log_statistics_window_start_block": rpc_log_meta.get("rpc_log_statistics_window_start_block"),
+        "rpc_log_statistics_window_end_block": rpc_log_meta.get("rpc_log_statistics_window_end_block"),
         "rpc_log_error_count": rpc_log_meta.get("rpc_log_error_count", 0),
+        **statistics_window_meta,
+        **emission_meta,
+        **statistics_window_active_meta,
+        "statistics_window_start_day": statistics_window_start_day,
+        "statistics_window_end_day": statistics_window_end_day,
         "today_chain_day": today_chain_day,
         "today_utc_date": today_utc_date,
+        "today_local_date": today_local_date,
         "today_new_wallet_count": rpc_log_meta.get("today_new_wallet_count"),
         "today_new_wallet_basis": rpc_log_meta.get("today_new_wallet_basis"),
+        "statistics_window_new_candidate_address_count": rpc_log_meta.get("statistics_window_new_candidate_address_count"),
+        "statistics_window_new_candidate_address_basis": rpc_log_meta.get("statistics_window_new_candidate_address_basis"),
         "today_new_power": today_new_power,
-        "today_new_power_basis": "current explorer totalPower minus previous UTC day contract dailyTotalPower",
-        "previous_day_total_power": previous_total_power,
+        "statistics_window_new_power": today_new_power,
+        "today_new_power_basis": "completed Beijing 08:00 statistics day end totalPower minus start totalPower",
+        "statistics_window_new_power_basis": "completed Beijing 08:00 statistics day end totalPower minus start totalPower",
+        "previous_day_total_power": statistics_window_start_total_power,
+        "statistics_window_start_total_power": statistics_window_start_total_power,
+        "statistics_window_end_total_power": statistics_window_end_total_power,
         "daily_power_history_days": daily_power_history_days,
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
