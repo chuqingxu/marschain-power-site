@@ -2178,17 +2178,17 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <header class="topbar">
     <div class="brand"><span class="mark"></span>MarsChain Rank</div>
     <nav class="nav">
-      <a href="#pulse">实时脉冲</a>
-      <a href="#wallets">地址口径</a>
-      <a href="#rank">排行雷达</a>
-      <a href="#risk">风险说明</a>
+      <a href="#pulse">核心数据</a>
+      <a href="#wallets">地址统计</a>
+      <a href="#rank">算力排行</a>
+      <a href="#risk">数据说明</a>
     </nav>
   </header>
   <section class="hero">
     <div class="hero-copy reveal visible">
       <span class="chip">数据已加载 · 每 5 小时刷新</span>
       <h1>MarsChain<br>算力指挥舱</h1>
-      <p class="lead">{escape(subtitle)}第一屏只给核心判断，继续下滑时，新增、地址口径、排行和风险说明依次展开。</p>
+      <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
         <span class="btn">总产量 {escape(total_supply)}</span>
@@ -2200,7 +2200,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <a class="btn" href="downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
       </div>
       {warning_html}
-      <div class="scroll-hint"><span class="mouse"></span><span>向下滑动查看完整数据链路</span></div>
+      <div class="scroll-hint"><span class="mouse"></span><span>继续查看地址统计口径、头部排行与数据说明</span></div>
     </div>
     <aside class="command reveal visible">
       <div class="radar">
@@ -2217,35 +2217,35 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <div class="marquee"><div class="track">{marquee_html}</div></div>
   <section id="pulse" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">01 / 实时脉冲</span><h2>核心脉冲，先看结果</h2></div>
-      <p>把所有“必须第一眼知道”的指标集中，其余技术细节不挤占主屏。</p>
+      <div><span class="kicker">01 / 核心数据</span><h2>当前算力概览</h2></div>
+      <p>展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。</p>
     </div>
     <div class="metrics stagger">{metric_cards}</div>
   </section>
   <section id="wallets" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">02 / 地址路径</span><h2>地址口径，滑动解释</h2></div>
-      <p>用一个漏斗讲清楚总钱包、候选地址、正算力地址之间的关系。</p>
+      <div><span class="kicker">02 / 地址统计</span><h2>钱包地址统计口径</h2></div>
+      <p>总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。</p>
     </div>
     <div class="funnel reveal">
-      <article class="fcard"><label>总钱包数量<span>公开地址</span></label><strong>{_fmt_chinese_number(explorer_total_addresses)}</strong><small>公开返回的地址规模，不等于都参与挖矿或有算力。</small></article>
+      <article class="fcard"><label>总钱包数量<span>地址总量</span></label><strong>{_fmt_chinese_number(explorer_total_addresses)}</strong><small>公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。</small></article>
       <div class="arrow"></div>
-      <article class="fcard"><label>候选地址<span>合约日志</span></label><strong>{_fmt_chinese_number(candidate_count)}</strong><small>从 POWER 合约日志发现，需要逐个查询当前算力。</small></article>
+      <article class="fcard"><label>候选地址<span>日志发现</span></label><strong>{_fmt_chinese_number(candidate_count)}</strong><small>从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。</small></article>
       <div class="arrow"></div>
-      <article class="fcard"><label>正算力地址<span>算力 &gt; 0</span></label><strong>{_fmt_chinese_number(positive_power_count)}</strong><small>候选地址中当前存在正算力的钱包。</small></article>
+      <article class="fcard"><label>正算力地址<span>算力 &gt; 0</span></label><strong>{_fmt_chinese_number(positive_power_count)}</strong><small>候选地址中当前算力大于 0 的钱包地址。</small></article>
     </div>
   </section>
   <section id="rank" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">03 / 排行雷达</span><h2>排行雷达，降低表格压迫感</h2></div>
-      <p>首页只展示头部梯队。完整表格与下载文件继续保留，但第一眼不再是密密麻麻地址。</p>
+      <div><span class="kicker">03 / 算力排行</span><h2>头部算力地址排行</h2></div>
+      <p>按当前查询到的算力降序展示头部地址。完整榜单可下载 CSV 或 Excel 查看。</p>
     </div>
     <div class="rank-grid">{rank_cards}</div>
   </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">04 / 扫描遥测</span><h2>扫描过程和风险提示</h2></div>
-      <p>准确度说明独立成段，保证可信但不干扰前面的浏览体验。</p>
+      <div><span class="kicker">04 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
+      <p>说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。</p>
     </div>
     <div class="telemetry">
       <div class="timeline panel reveal">{timeline_rows}</div>
