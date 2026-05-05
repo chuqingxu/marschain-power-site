@@ -1600,8 +1600,14 @@ h1 {
   animation: titleShine 8s ease-in-out infinite;
 }
 .lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
-.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
-.download-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 30px; }
+.download-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.hero-note {
+  color: #91a5c0;
+  line-height: 1.65;
+  max-width: 520px;
+  margin-left: 6px;
+}
 .btn {
   height: 50px;
   padding: 0 18px;
@@ -1977,10 +1983,16 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   }
   .hero-actions {
     width: 100%;
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
     gap: 10px;
     margin-top: 22px;
+  }
+  .hero-note {
+    margin-left: 0;
+    font-size: 12px;
+    line-height: 1.55;
   }
   .download-actions {
     width: 100%;
@@ -2459,14 +2471,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
-        <span class="btn">流通量 {escape(circulation)}</span>
-        <span class="btn mobile-secondary">总产量 {escape(total_supply)}</span>
-        <span class="btn">每日产币 {escape(daily_total)}</span>
-        <span class="btn">活跃地址 {_fmt_count_unit(active_wallet_count)}</span>
-        <span class="btn">新增地址 {_fmt_count_unit(new_address_count)}</span>
-        <span class="btn mobile-secondary">新增算力 {_fmt_power(new_power)}</span>
-        <span class="btn mobile-secondary">7天新增 {_fmt_power(period_7d_new_power)}</span>
-        <span class="btn mobile-secondary">单币日需算力 {escape(power_per_coin)}</span>
+        <span class="hero-note">核心数值在下方模块展开，首屏只保留覆盖状态和下载入口。</span>
       </div>
       <div class="download-actions">
         <a class="btn" href="downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
