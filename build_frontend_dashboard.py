@@ -1807,6 +1807,19 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .metric span { color: #aebbd2; font-size: 13px; }
 .metric b { display: block; font-size: 34px; margin-top: 24px; letter-spacing: -.055em; }
 .metric small { display: block; color: #8292ad; font-size: 12px; margin-top: 12px; }
+.growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.growth-card {
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(82,239,255,.18), transparent 34%),
+    linear-gradient(180deg, rgba(22,38,68,.9), rgba(8,15,30,.92));
+  overflow: hidden;
+}
+.growth-card h3 { margin: 10px 0 24px; font-size: 38px; letter-spacing: -.055em; }
+.growth-card .line { border-color: rgba(82,239,255,.14); }
+.growth-card .line b { font-size: 20px; }
 .funnel { display: grid; grid-template-columns: 1fr 72px 1fr 72px 1fr; align-items: center; gap: 12px; }
 .fcard { min-height: 230px; padding: 24px; border: 1px solid var(--line); border-radius: 26px; background: rgba(14,24,46,.82); }
 .fcard label { display: flex; justify-content: space-between; color: #abb9d0; font-weight: 950; }
@@ -1843,12 +1856,12 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   line-height: 1.65;
 }
 .footer { padding: 70px 0 54px; color: #6f7e96; text-align: center; font-size: 13px; }
-.metric, .fcard, .rank-card, .panel, .command {
+.metric, .growth-card, .fcard, .rank-card, .panel, .command {
   position: relative;
   transition: transform .34s cubic-bezier(.2,.85,.2,1), box-shadow .34s ease, border-color .34s ease, background .34s ease;
   transform-style: preserve-3d;
 }
-.metric:before, .fcard:before, .rank-card:before, .panel:before {
+.metric:before, .growth-card:before, .fcard:before, .rank-card:before, .panel:before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1859,12 +1872,12 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   transition: opacity .28s ease;
   pointer-events: none;
 }
-.metric:hover, .fcard:hover, .rank-card:hover, .panel:hover {
+.metric:hover, .growth-card:hover, .fcard:hover, .rank-card:hover, .panel:hover {
   transform: perspective(900px) rotateX(var(--tiltX,0deg)) rotateY(var(--tiltY,0deg)) translateY(-8px);
   border-color: rgba(82,239,255,.48);
   box-shadow: 0 26px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(82,239,255,.16), 0 0 48px rgba(82,239,255,.12);
 }
-.metric:hover:before, .fcard:hover:before, .rank-card:hover:before, .panel:hover:before { opacity: 1; }
+.metric:hover:before, .growth-card:hover:before, .fcard:hover:before, .rank-card:hover:before, .panel:hover:before { opacity: 1; }
 .command:hover {
   transform: perspective(900px) rotateX(var(--tiltX,0deg)) rotateY(var(--tiltY,0deg)) translateY(-6px);
   border-color: rgba(82,239,255,.48);
@@ -2038,6 +2051,10 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .metric span { font-size: 12px; line-height: 1.35; }
   .metric b { font-size: 25px; margin-top: 18px; line-height: 1.05; }
   .metric small { font-size: 11px; line-height: 1.45; margin-top: 9px; }
+  .growth-grid { grid-template-columns: 1fr; gap: 12px; }
+  .growth-card { padding: 18px; border-radius: 22px; }
+  .growth-card h3 { font-size: 28px; margin-bottom: 12px; }
+  .growth-card .line b { font-size: 16px; }
   .funnel { gap: 10px; }
   .fcard {
     min-height: auto;
@@ -2295,6 +2312,14 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     new_power = meta.get("statistics_window_new_power")
     if new_power is None:
         new_power = meta.get("today_new_power")
+    circulation = str(meta.get("network_total_circulation_display") or "待刷新")
+    total_burned = str(meta.get("network_total_burned_display") or "待刷新")
+    period_7d_new_power = meta.get("period_7d_new_power")
+    period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
+    period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
+    period_30d_new_power = meta.get("period_30d_new_power")
+    period_30d_new_address_count = meta.get("period_30d_new_candidate_address_count")
+    period_30d_burned = str(meta.get("period_30d_burned_display") or "待刷新")
     positive_ratio = 0.0
     if _as_float(candidate_count) > 0:
         positive_ratio = _as_float(positive_power_count) / _as_float(candidate_count)
@@ -2307,8 +2332,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 
     metric_items = [
         ("全网总算力", _fmt_power(network_total_power), "区块浏览器公开统计"),
+        ("全网流通量", circulation, "区块浏览器公开统计"),
         ("总产量", total_supply, "官网口径：永不增发"),
         ("每日产币量", daily_total, "官方经济模型口径"),
+        ("累计销毁", total_burned, "POWER 合约累计燃烧"),
         ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模"),
         ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0"),
         ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00"),
@@ -2318,6 +2345,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     ]
     marquee_items = [
         ("覆盖率", coverage_label),
+        ("流通量", circulation),
         ("总产量", total_supply),
         ("每日产币量", daily_total),
         ("最新区块", f"{_as_int(meta.get('latest_block')) or _as_int(meta.get('rpc_log_end_block')):,}"),
@@ -2327,6 +2355,12 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
         ("统计日新增算力", _fmt_power(new_power)),
+        ("7天新增算力", _fmt_power(period_7d_new_power)),
+        ("7天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+        ("7天销毁", period_7d_burned),
+        ("30天新增算力", _fmt_power(period_30d_new_power)),
+        ("30天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+        ("30天销毁", period_30d_burned),
         ("单币日需算力", power_per_coin),
         ("缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
     ]
@@ -2334,9 +2368,17 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("最近刷新", generated_at),
         ("统计周期", statistics_window_label),
         ("刷新频率", "每 5 小时"),
+        ("全网流通量", circulation),
+        ("累计销毁", total_burned),
         ("全网总算力", _fmt_power(network_total_power)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
+        ("7 天新增算力", _fmt_power(period_7d_new_power)),
+        ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+        ("7 天销毁", period_7d_burned),
+        ("30 天新增算力", _fmt_power(period_30d_new_power)),
+        ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+        ("30 天销毁", period_30d_burned),
         ("矿工日产币量", daily_miner),
         ("节点日产币量", daily_node),
         ("单币日需算力", power_per_coin),
@@ -2347,6 +2389,22 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 
     warning_html = _build_warning(meta, threshold_label)
     metric_cards = _build_metric_cards(metric_items)
+    growth_cards = f"""
+      <article class="growth-card reveal">
+        <span class="kicker">7 DAYS</span>
+        <h3>7 天新增</h3>
+        <div class="line"><span>新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b></div>
+        <div class="line"><span>新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b></div>
+        <div class="line"><span>销毁数量</span><b>{escape(period_7d_burned)}</b></div>
+      </article>
+      <article class="growth-card reveal">
+        <span class="kicker">30 DAYS</span>
+        <h3>30 天新增</h3>
+        <div class="line"><span>新增算力</span><b>{escape(_fmt_power(period_30d_new_power))}</b></div>
+        <div class="line"><span>新增地址</span><b>{escape(_fmt_count_unit(period_30d_new_address_count))}</b></div>
+        <div class="line"><span>销毁数量</span><b>{escape(period_30d_burned)}</b></div>
+      </article>
+    """
     rank_cards = _build_rank_cards(rows)
     timeline_rows = _build_timeline(timeline_items)
     marquee_html = _build_marquee(marquee_items)
@@ -2388,6 +2446,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     <div class="brand"><span class="mark"></span>MarsChain Rank</div>
     <nav class="nav">
       <a href="#pulse">核心数据</a>
+      <a href="#growth">周期增长</a>
       <a href="#wallets">地址统计</a>
       <a href="#rank">算力排行</a>
       <a href="#risk">数据说明</a>
@@ -2400,11 +2459,13 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
+        <span class="btn">流通量 {escape(circulation)}</span>
         <span class="btn mobile-secondary">总产量 {escape(total_supply)}</span>
         <span class="btn">每日产币 {escape(daily_total)}</span>
         <span class="btn">活跃地址 {_fmt_count_unit(active_wallet_count)}</span>
         <span class="btn">新增地址 {_fmt_count_unit(new_address_count)}</span>
         <span class="btn mobile-secondary">新增算力 {_fmt_power(new_power)}</span>
+        <span class="btn mobile-secondary">7天新增 {_fmt_power(period_7d_new_power)}</span>
         <span class="btn mobile-secondary">单币日需算力 {escape(power_per_coin)}</span>
       </div>
       <div class="download-actions">
@@ -2434,9 +2495,16 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     </div>
     <div class="metrics stagger">{metric_cards}</div>
   </section>
+  <section id="growth" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">02 / 周期增长</span><h2>7 天与 30 天新增</h2></div>
+      <p>按最近完整北京时间统计日汇总新增算力、新增地址和 TokensBurned 销毁事件。</p>
+    </div>
+    <div class="growth-grid">{growth_cards}</div>
+  </section>
   <section id="wallets" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">02 / 地址统计</span><h2>钱包地址统计口径</h2></div>
+      <div><span class="kicker">03 / 地址统计</span><h2>钱包地址统计口径</h2></div>
       <p>总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。</p>
     </div>
     <div class="funnel reveal">
@@ -2449,14 +2517,14 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   </section>
   <section id="rank" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">03 / 算力排行</span><h2>头部算力地址排行</h2></div>
+      <div><span class="kicker">04 / 算力排行</span><h2>头部算力地址排行</h2></div>
       <p>按当前查询到的算力降序展示头部地址。完整榜单可下载 CSV 或 Excel 查看。</p>
     </div>
     <div class="rank-grid">{rank_cards}</div>
   </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">04 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
+      <div><span class="kicker">05 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
       <p>说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。</p>
     </div>
     <div class="telemetry">
@@ -2667,6 +2735,14 @@ def build_mobile_html(payload: dict) -> str:
     new_power = meta.get("statistics_window_new_power")
     if new_power is None:
         new_power = meta.get("today_new_power")
+    circulation = str(meta.get("network_total_circulation_display") or "待刷新")
+    total_burned = str(meta.get("network_total_burned_display") or "待刷新")
+    period_7d_new_power = meta.get("period_7d_new_power")
+    period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
+    period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
+    period_30d_new_power = meta.get("period_30d_new_power")
+    period_30d_new_address_count = meta.get("period_30d_new_candidate_address_count")
+    period_30d_burned = str(meta.get("period_30d_burned_display") or "待刷新")
 
     total_supply = str(meta.get("emission_total_supply_cap_display") or "2000亿")
     daily_total = str(meta.get("emission_daily_total_display") or "待刷新")
@@ -2677,10 +2753,18 @@ def build_mobile_html(payload: dict) -> str:
     key_cards = _build_mobile_metric_cards(
         [
             ("全网总算力", _fmt_power(network_total_power), "公开接口统计"),
+            ("全网流通量", circulation, "区块浏览器公开统计"),
             ("每日产币量", daily_total, "官方经济模型口径"),
+            ("累计销毁", total_burned, "POWER 合约累计燃烧"),
             ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃"),
             ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志"),
             ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径"),
+            ("7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日"),
+            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志"),
+            ("7 天销毁", period_7d_burned, "TokensBurned 汇总"),
+            ("30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日"),
+            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志"),
+            ("30 天销毁", period_30d_burned, "TokensBurned 汇总"),
             ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
         ]
     )
@@ -2697,6 +2781,14 @@ def build_mobile_html(payload: dict) -> str:
             ("最近刷新", generated_at),
             ("统计周期", statistics_window_label),
             ("刷新频率", "每 5 小时"),
+            ("全网流通量", circulation),
+            ("累计销毁", total_burned),
+            ("7 天新增算力", _fmt_power(period_7d_new_power)),
+            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+            ("7 天销毁", period_7d_burned),
+            ("30 天新增算力", _fmt_power(period_30d_new_power)),
+            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+            ("30 天销毁", period_30d_burned),
             ("总产量", total_supply),
             ("矿工日产币量", daily_miner),
             ("节点日产币量", daily_node),
@@ -2740,8 +2832,11 @@ def build_mobile_html(payload: dict) -> str:
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
         <div class="m-card-grid">
           <article class="m-card"><span>全网总算力</span><b>{escape(_fmt_power(network_total_power))}</b><small>公开接口统计</small></article>
+          <article class="m-card"><span>全网流通量</span><b>{escape(circulation)}</b><small>公开接口统计</small></article>
           <article class="m-card"><span>统计日活跃地址</span><b>{escape(_fmt_count_unit(active_wallet_count))}</b><small>北京 08:00 至次日 08:00</small></article>
           <article class="m-card"><span>统计日新增地址</span><b>{escape(_fmt_count_unit(new_address_count))}</b><small>首次进入 POWER 日志</small></article>
+          <article class="m-card"><span>7 天新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b><small>最近 7 个完整统计日</small></article>
+          <article class="m-card"><span>7 天新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b><small>首次进入 POWER 日志</small></article>
           <article class="m-card"><span>每日产币量</span><b>{escape(daily_total)}</b><small>官方经济模型口径</small></article>
         </div>
         <div class="m-actions">
