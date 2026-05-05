@@ -1601,6 +1601,7 @@ h1 {
 }
 .lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+.download-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .btn {
   height: 50px;
   padding: 0 18px;
@@ -1895,14 +1896,186 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .arrow:after { right: -4px; top: auto; bottom: 0; transform: rotate(90deg); }
 }
 @media (max-width: 720px) {
-  .shell { width: calc(100vw - 24px); }
-  .topbar { position: relative; top: 0; align-items: flex-start; border-radius: 24px; flex-direction: column; }
-  .nav { flex-wrap: wrap; }
-  .hero { min-height: auto; padding-top: 34px; grid-template-columns: 1fr; }
-  h1 { font-size: 50px; }
-  .command { min-height: 430px; }
-  .metrics, .rank-grid { grid-template-columns: 1fr; }
-  .section-head { align-items: flex-start; flex-direction: column; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    background:
+      radial-gradient(circle at 12% 0%, rgba(82,239,255,.20), transparent 34%),
+      radial-gradient(circle at 96% 10%, rgba(124,136,255,.18), transparent 32%),
+      linear-gradient(180deg, #030612, #071124 52%, #030612);
+    -webkit-text-size-adjust: 100%;
+  }
+  body:before {
+    background-size: 44px 44px;
+    transform: perspective(640px) rotateX(64deg) translateY(-118px);
+    opacity: .48;
+  }
+  .shell { width: min(calc(100vw - 28px), 360px); }
+  .shell, .topbar, .hero, .hero-copy, .hero-actions, .download-actions, .metrics, .funnel, .rank-grid, .telemetry {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .topbar {
+    position: sticky;
+    top: 10px;
+    align-items: flex-start;
+    border-radius: 22px;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+  .brand { width: 100%; font-size: 16px; }
+  .mark { width: 28px; height: 28px; border-radius: 10px; }
+  .nav {
+    width: 100%;
+    gap: 8px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a {
+    flex: 0 0 auto;
+    padding: 8px 11px;
+    font-size: 12px;
+    background: rgba(255,255,255,.045);
+    border-color: rgba(125,225,255,.12);
+  }
+  .hero {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 22px;
+    padding: 32px 0 42px;
+  }
+  .chip { padding: 7px 11px; font-size: 11px; letter-spacing: .05em; }
+  h1 {
+    font-size: clamp(44px, 15vw, 58px);
+    line-height: .9;
+    letter-spacing: -.07em;
+    margin: 18px 0 16px;
+  }
+  .lead {
+    font-size: 16px;
+    line-height: 1.72;
+    width: 100%;
+    max-width: none;
+    color: #d0dcf0;
+    overflow-wrap: anywhere;
+  }
+  .hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .download-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .hero-actions .btn, .download-actions .btn {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    justify-content: center;
+    padding: 0 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    letter-spacing: -.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hero-actions .btn.hot { grid-column: auto; }
+  .hero-actions .mobile-secondary { display: none; }
+  .scroll-hint { margin-top: 28px; font-size: 12px; align-items: flex-start; }
+  .mouse { width: 22px; height: 34px; flex: 0 0 auto; }
+  .command {
+    min-height: 310px;
+    border-radius: 26px;
+    order: 2;
+  }
+  .radar { inset: 18px; border-radius: 22px; }
+  .radar:before { inset: 42px; box-shadow: 0 0 0 34px rgba(82,239,255,.035), 0 0 0 78px rgba(124,136,255,.03); }
+  .core { top: 44%; }
+  .core b { font-size: 44px; }
+  .mini { left: 14px; right: 14px; bottom: 14px; gap: 8px; }
+  .mini div { padding: 10px; border-radius: 14px; }
+  .mini span { font-size: 10px; }
+  .mini b { font-size: 16px; }
+  .marquee {
+    position: relative;
+    top: auto;
+    margin-top: 0;
+    height: 48px;
+    border-radius: 18px;
+  }
+  .track { gap: 8px; animation-duration: 42s; }
+  .track span { padding: 8px 11px; font-size: 11px; letter-spacing: .03em; }
+  .section { padding: 72px 0; }
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .kicker { font-size: 11px; }
+  h2 { font-size: clamp(34px, 11vw, 44px); line-height: .96; letter-spacing: -.055em; }
+  .section-head p { font-size: 14px; line-height: 1.7; max-width: none; }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .metric {
+    min-height: 132px;
+    padding: 15px;
+    border-radius: 19px;
+  }
+  .metric:after { width: 72px; height: 72px; right: -24px; top: -24px; }
+  .metric span { font-size: 12px; line-height: 1.35; }
+  .metric b { font-size: 25px; margin-top: 18px; line-height: 1.05; }
+  .metric small { font-size: 11px; line-height: 1.45; margin-top: 9px; }
+  .funnel { gap: 10px; }
+  .fcard {
+    min-height: auto;
+    padding: 18px;
+    border-radius: 21px;
+  }
+  .fcard label { font-size: 13px; }
+  .fcard strong { font-size: 40px; margin: 26px 0 10px; }
+  .fcard small { font-size: 12px; }
+  .arrow { height: 28px; opacity: .75; }
+  .rank-grid { grid-template-columns: 1fr; gap: 10px; }
+  .rank-card {
+    min-height: 120px;
+    padding: 15px;
+    border-radius: 19px;
+  }
+  .rank-top strong { font-size: 21px; }
+  .rank-card code { margin: 14px 0 12px; font-size: 12px; }
+  .telemetry { grid-template-columns: 1fr; gap: 12px; }
+  .timeline, .risk { padding: 18px; border-radius: 22px; }
+  .line {
+    align-items: flex-start;
+    padding: 13px 0;
+    font-size: 13px;
+  }
+  .line b { max-width: 58%; word-break: break-word; }
+  .risk h3 { font-size: 22px; }
+  .risk p { font-size: 13px; line-height: 1.8; }
+  .footer { padding: 44px 14px 40px; line-height: 1.65; }
+}
+@media (max-width: 380px) {
+  .shell { width: calc(100vw - 18px); }
+  h1 { font-size: 42px; }
+  .hero-actions, .download-actions, .metrics { grid-template-columns: 1fr; }
+  .hero-actions .btn.hot { grid-column: auto; }
+  .command { min-height: 288px; }
+  .mini { grid-template-columns: 1fr; }
+  .mini div { display: flex; justify-content: space-between; align-items: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -2209,12 +2382,14 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
-        <span class="btn">总产量 {escape(total_supply)}</span>
+        <span class="btn mobile-secondary">总产量 {escape(total_supply)}</span>
         <span class="btn">每日产币 {escape(daily_total)}</span>
         <span class="btn">活跃地址 {_fmt_count_unit(active_wallet_count)}</span>
         <span class="btn">新增地址 {_fmt_count_unit(new_address_count)}</span>
-        <span class="btn">新增算力 {_fmt_power(new_power)}</span>
-        <span class="btn">单币日需算力 {escape(power_per_coin)}</span>
+        <span class="btn mobile-secondary">新增算力 {_fmt_power(new_power)}</span>
+        <span class="btn mobile-secondary">单币日需算力 {escape(power_per_coin)}</span>
+      </div>
+      <div class="download-actions">
         <a class="btn" href="downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
         <a class="btn" href="downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
       </div>
