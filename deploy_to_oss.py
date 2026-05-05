@@ -26,6 +26,8 @@ NO_CACHE_KEYS = {
     "build-meta.json",
     "data/latest.json",
     "index.html",
+    "m/",
+    "m/index.html",
 }
 
 
@@ -86,6 +88,8 @@ def refresh_urls(base_url: str) -> list[str]:
     return [
         canonical,
         urljoin(canonical, "index.html"),
+        urljoin(canonical, "m/"),
+        urljoin(canonical, "m/index.html"),
         urljoin(canonical, "build-meta.json"),
         urljoin(canonical, "data/latest.json"),
         urljoin(canonical, "downloads/latest.csv"),
@@ -103,11 +107,13 @@ def sync_site(
 ) -> dict[str, list[str]]:
     files = iter_site_files(site_dir)
     desired_keys = {build_remote_key(prefix, rel): (rel, path) for rel, path in files}
+    mobile_index = site_dir / "m" / "index.html"
+    if mobile_index.exists():
+        desired_keys[build_remote_key(prefix, "m/")] = ("m/index.html", mobile_index)
     summary = {"upload": [], "delete": []}
 
     if dry_run:
-        for rel, _ in files:
-            summary["upload"].append(build_remote_key(prefix, rel))
+        summary["upload"].extend(sorted(desired_keys))
         return summary
 
     import oss2
