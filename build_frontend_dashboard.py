@@ -1196,6 +1196,11 @@ def build_html(payload: dict) -> str:
           help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：首次出现在 POWER 合约日志中的候选地址数量。`
         }},
         {{
+          label: `统计日活跃地址数量${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
+          value: meta.statistics_window_active_wallet_address_count === null || meta.statistics_window_active_wallet_address_count === undefined ? '—' : `${{formatCount(meta.statistics_window_active_wallet_address_count)}} 个`,
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：该窗口内在 POWER 合约日志中出现过的钱包地址数量。`
+        }},
+        {{
           label: `统计日新增总算力${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: formatMaybeUnits(meta.today_new_power),
           help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
@@ -2133,6 +2138,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("每日产币量", daily_total, "官方经济模型口径"),
         ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模"),
         ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0"),
+        ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00"),
         ("统计日新增地址数量", _fmt_count_unit(new_address_count), "北京时间 08:00 至次日 08:00"),
         ("统计日新增总算力", _fmt_power(new_power), "同一统计日口径"),
         ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
@@ -2145,6 +2151,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("算力日志", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
         ("候选地址", _fmt_chinese_number(candidate_count)),
         ("正算力地址", _fmt_chinese_number(positive_power_count)),
+        ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
         ("统计日新增算力", _fmt_power(new_power)),
         ("单币日需算力", power_per_coin),
@@ -2204,6 +2211,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
         <span class="btn">总产量 {escape(total_supply)}</span>
         <span class="btn">每日产币 {escape(daily_total)}</span>
+        <span class="btn">活跃地址 {_fmt_count_unit(active_wallet_count)}</span>
         <span class="btn">新增地址 {_fmt_count_unit(new_address_count)}</span>
         <span class="btn">新增算力 {_fmt_power(new_power)}</span>
         <span class="btn">单币日需算力 {escape(power_per_coin)}</span>
