@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: marschain-site
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -59,8 +59,40 @@ jobs:
           pip install -r requirements.txt
 
       - name: Refresh site with best-effort coverage
+        if: ${{ !(github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) }}
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
+
+      - name: Rebuild site shell from current public data
+        if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]') }}
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from pathlib import Path
+
+          from build_frontend_dashboard import build_html, build_mobile_html
+
+          origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
+          with urllib.request.urlopen(f"{origin}/data/latest.json", timeout=60) as resp:
+              payload = json.load(resp)
+          try:
+              with urllib.request.urlopen(f"{origin}/build-meta.json", timeout=60) as resp:
+                  build_meta = json.load(resp)
+          except Exception:
+              build_meta = payload.get("meta", {})
+
+          site_dir = Path("site")
+          data_dir = site_dir / "data"
+          mobile_dir = site_dir / "m"
+          data_dir.mkdir(parents=True, exist_ok=True)
+          mobile_dir.mkdir(parents=True, exist_ok=True)
+          (site_dir / "index.html").write_text(build_html(payload))
+          (mobile_dir / "index.html").write_text(build_mobile_html(payload))
+          (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+          (site_dir / "build-meta.json").write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + "\n")
+          (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
+          PY
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
